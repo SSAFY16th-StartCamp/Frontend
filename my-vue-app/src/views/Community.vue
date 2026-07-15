@@ -113,6 +113,7 @@
           :key="listRefreshKey"
           :search-keyword="searchKeyword"
           @edit="openEdit"
+          @view="openView"
           @changed="refreshList"
         />
       </section>
@@ -125,6 +126,12 @@
         @close="closeEditor"
         @saved="handleSaved"
       />
+      <PostDetail
+        v-if="detailOpen"
+        :postId="detailPostId"
+        @close="closeDetail"
+        @saved="refreshList"
+      />
     </Teleport>
   </div>
 </template>
@@ -134,13 +141,21 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PostList from '../components/PostList.vue'
 import PostEditor from '../components/PostEditor.vue'
+import useApi from '../composables/useApi'
+import PostDetail from '../components/PostDetail.vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const { locale } = useI18n()
 
 const editorOpen = ref(false)
 const editingPost = ref(null)
+const api = useApi()
+const detailOpen = ref(false)
+const detailPostId = ref(null)
 const searchKeyword = ref('')
 const listRefreshKey = ref(0)
+const route = useRoute()
+const router = useRouter()
 
 const copy = computed(() => {
   if (locale.value === 'en') {
@@ -185,9 +200,16 @@ function openNew() {
   editorOpen.value = true
 }
 
-function openEdit(post) {
-  editingPost.value = post
+async function openEdit(post) {
   editorOpen.value = true
+
+  try {
+    const data = await api.fetchPost(post.id)
+    editingPost.value = data
+  } catch (err) {
+    // fallback to minimal post if fetch fails
+    editingPost.value = post
+  }
 }
 
 function closeEditor() {
@@ -202,6 +224,39 @@ function handleSaved() {
 
 function refreshList() {
   listRefreshKey.value += 1
+}
+
+// open post detail when query param `post` exists
+watch(
+  () => route.query.post,
+  (val) => {
+    if (val) {
+      detailPostId.value = val
+      detailOpen.value = true
+    } else {
+      detailOpen.value = false
+      detailPostId.value = null
+    }
+  },
+  { immediate: true }
+)
+
+function closeDetail() {
+  // close modal locally
+  detailOpen.value = false
+  detailPostId.value = null
+
+  // remove query param if present
+  if (route.query && route.query.post) {
+    const q = { ...route.query }
+    delete q.post
+    router.replace({ path: route.path, query: q })
+  }
+}
+
+function openView(post) {
+  detailPostId.value = post.id
+  detailOpen.value = true
 }
 
 watch(editorOpen, (isOpen) => {

@@ -49,6 +49,11 @@ export default function useApi() {
   // Chat
   const postChat = (body) => api.post('/api/v1/chat', body).then(r => r.data)
 
+  // Comments
+  const createComment = (postId, body) => api.post(`/api/v1/posts/${postId}/comments`, body).then(r => r.data)
+  const updateComment = (postId, commentId, body) => api.put(`/api/v1/posts/${postId}/comments/${commentId}`, body).then(r => r.data)
+  const deleteComment = (postId, commentId, body) => api.delete(`/api/v1/posts/${postId}/comments/${commentId}`, { data: body }).then(r => r.data)
+
   // Health
   const health = () => api.get('/api/v1/health').then(r => r.data)
 
@@ -60,6 +65,7 @@ export default function useApi() {
     fetchPosts, fetchPost, createPost, updatePost, deletePost,
     fetchTags,
     postChat,
+    createComment, updateComment, deleteComment,
     health
   }
 }
