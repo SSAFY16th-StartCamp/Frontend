@@ -940,6 +940,8 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  border: none;
+  background: transparent;
 }
 
 .brand-logo {

@@ -170,7 +170,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { watch, computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import useApi from '../composables/useApi'
 
@@ -178,8 +178,20 @@ const props = defineProps({
   searchKeyword: {
     type: String,
     default: ''
+  },
+  locationId: {
+    type: [String, Number],
+    default: null
   }
 })
+
+watch(
+  () => props.locationId,
+  (newVal, oldVal) => {
+    // location이 바뀌면 목록 다시 불러오기
+    load()
+  }
+)
 
 const emit = defineEmits(['edit', 'changed'])
 
@@ -265,7 +277,8 @@ async function load() {
     api.fetchPosts({
       page: 1,
       size: 50,
-      sort: 'latest'
+      sort: 'latest',
+      ...(props.locationId ? { location_id: props.locationId } : {})
     })
   )
 

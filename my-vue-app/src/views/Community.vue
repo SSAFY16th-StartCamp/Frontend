@@ -111,6 +111,7 @@
         <PostList
           :key="listRefreshKey"
           :search-keyword="searchKeyword"
+          :location-id="locationFilter"
           @edit="openEdit"
           @view="openView"
           @changed="refreshList"
@@ -155,6 +156,7 @@ const detailOpen = ref(false)
 const detailPostId = ref(null)
 const searchKeyword = ref('')
 const listRefreshKey = ref(0)
+const locationFilter = computed(() => route.query.location || null)
 
 const copy = computed(() => {
   if (locale.value === 'en') {

@@ -473,14 +473,17 @@ watch(
 .floating-chatbot {
   position: fixed;
   right: 18px;
-  bottom: 88px;
+  bottom: 68px;
   z-index: 1400;
+  /* 화면 밖으로 나가지 않도록 제한 */
+  max-width: calc(100vw - 36px);
 }
 
 /* 플로팅 버튼 */
 .chatbot-toggle {
   position: relative;
   display: flex;
+  max-width: 100%;
   align-items: center;
   gap: 11px;
   min-height: 60px;
@@ -517,7 +520,18 @@ watch(
 .toggle-copy {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 210px;
   align-items: flex-start;
+}
+
+.toggle-copy strong,
+.toggle-copy small {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .toggle-copy strong {
@@ -952,11 +966,44 @@ watch(
   text-align: center;
 }
 
+@media (max-width: 700px) {
+  .floating-chatbot {
+    right: 12px;
+    bottom: 60px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .chatbot-toggle {
+    max-width: calc(100vw - 24px);
+    gap: 8px;
+    padding-right: 12px;
+  }
+
+  .toggle-copy {
+    max-width: min(180px, calc(100vw - 105px));
+  }
+
+  .toggle-copy strong {
+    font-size: 12px;
+  }
+
+  .toggle-copy small {
+    font-size: 9px;
+  }
+}
+
 /* 모바일 */
 @media (max-width: 520px) {
   .floating-chatbot {
-    right: 14px;
-    bottom: 82px;
+    right: max(
+      12px,
+      env(safe-area-inset-right)
+    );
+    bottom: max(
+      60px,
+      env(safe-area-inset-bottom)
+    );
+    max-width: 58px;
   }
 
   .chatbot-toggle {
