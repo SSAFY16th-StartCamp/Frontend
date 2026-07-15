@@ -225,8 +225,10 @@ import {
 } from 'vue'
 
 import useApi from '../composables/useApi'
+import { useSettings } from '../stores/settings'
 
 const api = useApi()
+const settings = useSettings()
 
 const bodyRef = ref(null)
 const question = ref('')
@@ -359,6 +361,9 @@ async function send() {
       history
     }
 
+    // Debug info: show where the request will be sent and payload
+    console.debug('chat: sending', { baseURL: api.baseURL, payload })
+
     const [error, response] = await api.safe(() =>
       api.postChat(payload)
     )
@@ -366,6 +371,7 @@ async function send() {
     removeMessage(typingMessage.id)
 
     if (error) {
+      console.error('chat error (safe):', error, error?.response?.status, error?.response?.data)
       messages.value.push(
         createMessage('bot', copy.value.serverError)
       )
@@ -379,6 +385,8 @@ async function send() {
     )
   } catch (error) {
     removeMessage(typingMessage.id)
+
+    console.error('chat exception:', error, error?.response?.status, error?.response?.data)
 
     messages.value.push(
       createMessage('bot', copy.value.serverError)

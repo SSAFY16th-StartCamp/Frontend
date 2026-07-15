@@ -2,9 +2,16 @@
 // src/composables/useApi.js
 import axios from 'axios'
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL
-)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+
+if (!API_BASE_URL) {
+  // Log helpful hint so frontend shows where requests will go
+  // If this is empty, axios will send requests relative to the current origin.
+  // Place a `.env` with `VITE_API_BASE_URL` inside `my-vue-app/` and restart Vite.
+  console.warn('VITE_API_BASE_URL is not defined — requests will use the current origin.')
+} else {
+  console.debug('VITE_API_BASE_URL=', API_BASE_URL)
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -48,6 +55,7 @@ export default function useApi() {
   return {
     // safe wrappers
     safe,
+    baseURL: API_BASE_URL,
     fetchLocations, fetchLocation,
     fetchPosts, fetchPost, createPost, updatePost, deletePost,
     fetchTags,
