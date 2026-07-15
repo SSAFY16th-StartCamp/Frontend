@@ -55,11 +55,9 @@ const categories = [
   ['attraction', '🏛️'],
   ['culture', '🎨'],
   ['festival', '🎉'],
-  ['course', '🚶'],
   ['leisure', '🚲'],
   ['accommodation', '🛏️'],
   ['shopping', '🛍️'],
-  ['restaurant', '🍽️']
 ]
 
 const labels = computed(() => {
@@ -75,7 +73,7 @@ const labels = computed(() => {
           'All Seoul places',
 
         description:
-          'Browse attractions, festivals, cultural facilities, accommodations and restaurants loaded from the Seoul tourism API.',
+          'Browse attractions, festivals, cultural facilities, accommodations loaded from the Seoul tourism API.',
 
         search:
           'Search place name or address',
@@ -133,11 +131,9 @@ const labels = computed(() => {
           attraction: 'Attractions',
           culture: 'Culture',
           festival: 'Festivals',
-          course: 'Travel courses',
           leisure: 'Leisure',
           accommodation: 'Stay',
           shopping: 'Shopping',
-          restaurant: 'Restaurants'
         }
       }
     : {
@@ -206,11 +202,9 @@ const labels = computed(() => {
           attraction: '관광지',
           culture: '문화시설',
           festival: '축제',
-          course: '여행코스',
           leisure: '레포츠',
           accommodation: '숙박',
           shopping: '쇼핑',
-          restaurant: '음식점'
         }
       }
 })

@@ -67,11 +67,9 @@ const text = computed(() => {
           attraction: 'Attractions',
           culture: 'Culture',
           festival: 'Festivals',
-          course: 'Courses',
           leisure: 'Leisure',
           accommodation: 'Stay',
           shopping: 'Shopping',
-          restaurant: 'Restaurants'
         },
 
         rankingTitle:
@@ -147,11 +145,9 @@ const text = computed(() => {
           attraction: '관광지',
           culture: '문화시설',
           festival: '축제',
-          course: '여행코스',
           leisure: '레포츠',
           accommodation: '숙박',
           shopping: '쇼핑',
-          restaurant: '음식점'
         },
 
         rankingTitle:
@@ -232,14 +228,6 @@ const categories = [
     route: '/location',
     query: {
       category: 'festival'
-    }
-  },
-  {
-    id: 'course',
-    icon: '🚶',
-    route: '/location',
-    query: {
-      category: 'course'
     }
   },
   {

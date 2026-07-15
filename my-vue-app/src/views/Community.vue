@@ -1,5 +1,40 @@
 <template>
   <div class="community-page">
+    <!-- 상단 헤더 (Home과 동일한 형태, 기존 스타일 유지) -->
+    <header class="home-header">
+      <button
+        type="button"
+        class="brand"
+        aria-label="홈으로 이동"
+        @click="router.push('/')"
+      >
+        <span class="brand-logo">W</span>
+
+        <span class="brand-copy">
+          <strong>Welcome Seoul</strong>
+          <span>{{ copy.badgeSubtitle }}</span>
+        </span>
+      </button>
+
+      <div class="language-switch" aria-label="언어 선택">
+        <button
+          type="button"
+          :class="{ active: locale === 'ko' }"
+          @click="changeLanguage('ko')"
+        >
+          KO
+        </button>
+
+        <button
+          type="button"
+          :class="{ active: locale === 'en' }"
+          @click="changeLanguage('en')"
+        >
+          EN
+        </button>
+      </div>
+    </header>
+
     <section class="community-hero">
       <div class="hero-decoration decoration-one" />
       <div class="hero-decoration decoration-two" />
@@ -19,18 +54,9 @@
           class="write-button"
           @click="openNew"
         >
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 20h9" />
-            <path
-              d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"
-            />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
           </svg>
 
           {{ copy.writePost }}
@@ -41,14 +67,7 @@
     <main class="community-content">
       <section class="community-toolbar">
         <div class="search-wrap">
-          <svg
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.7-3.7" />
           </svg>
@@ -71,33 +90,13 @@
           </button>
         </div>
 
-        <button
-          type="button"
-          class="desktop-write-button"
-          @click="openNew"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="17"
-            height="17"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+        <button type="button" class="desktop-write-button" @click="openNew">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14" />
           </svg>
 
           {{ copy.writePost }}
         </button>
-      </section>
-
-      <section class="community-guide">
-        <span class="guide-icon">🌏</span>
-
-        <div>
-          <strong>{{ copy.guideTitle }}</strong>
-          <p>{{ copy.guideDescription }}</p>
-        </div>
       </section>
 
       <section class="post-section">
@@ -117,21 +116,19 @@
           @changed="refreshList"
         />
       </section>
+
+      <footer class="site-footer">
+        <div class="container">
+          <strong>Welcome Seoul</strong>
+          <p>{{ copy.dataSource }}</p>
+          <p>License: 공공누리 제3유형</p>
+        </div>
+      </footer>
     </main>
 
     <Teleport to="body">
-      <PostEditor
-        v-if="editorOpen"
-        :post="editingPost"
-        @close="closeEditor"
-        @saved="handleSaved"
-      />
-      <PostDetail
-        v-if="detailOpen"
-        :postId="detailPostId"
-        @close="closeDetail"
-        @saved="refreshList"
-      />
+      <PostEditor v-if="editorOpen" :post="editingPost" @close="closeEditor" @saved="handleSaved" />
+      <PostDetail v-if="detailOpen" :postId="detailPostId" @close="closeDetail" @saved="refreshList" />
     </Teleport>
   </div>
 </template>
@@ -144,23 +141,26 @@ import PostEditor from '../components/PostEditor.vue'
 import useApi from '../composables/useApi'
 import PostDetail from '../components/PostDetail.vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSettings } from '../stores/settings'
 
 const { locale } = useI18n()
+const settings = useSettings()
+const api = useApi()
+const route = useRoute()
+const router = useRouter()
 
 const editorOpen = ref(false)
 const editingPost = ref(null)
-const api = useApi()
 const detailOpen = ref(false)
 const detailPostId = ref(null)
 const searchKeyword = ref('')
 const listRefreshKey = ref(0)
-const route = useRoute()
-const router = useRouter()
 
 const copy = computed(() => {
   if (locale.value === 'en') {
     return {
       badge: 'Seoul local community',
+      badgeSubtitle: 'Local tips for global travelers',
       title: 'Ask locals.\nTravel Seoul with confidence.',
       description:
         'Share questions anonymously and discover practical tips from Seoul residents and international travelers.',
@@ -173,12 +173,14 @@ const copy = computed(() => {
       sectionEyebrow: 'Latest community',
       sectionTitle: 'Questions and local tips',
       sectionDescription:
-        'Explore recent travel questions and useful information shared by the community.'
+        'Explore recent travel questions and useful information shared by the community.',
+      dataSource: 'Data: Korea Tourism Organization TourAPI 4.0'
     }
   }
 
   return {
     badge: '서울 로컬 커뮤니티',
+    badgeSubtitle: '외국인을 위한 서울 로컬 정보',
     title: '현지인에게 묻고,\n안심하고 서울을 여행하세요.',
     description:
       '로그인 없이 익명으로 질문하고, 서울 주민과 외국인 여행자가 공유한 실용적인 정보를 확인하세요.',
@@ -191,7 +193,8 @@ const copy = computed(() => {
     sectionEyebrow: '최신 커뮤니티',
     sectionTitle: '여행 질문과 로컬 팁',
     sectionDescription:
-      '커뮤니티에 새로 등록된 서울 여행 질문과 유용한 정보를 확인하세요.'
+      '커뮤니티에 새로 등록된 서울 여행 질문과 유용한 정보를 확인하세요.',
+    dataSource: '데이터 출처: 한국관광공사 TourAPI 4.0'
   }
 })
 
@@ -207,7 +210,6 @@ async function openEdit(post) {
     const data = await api.fetchPost(post.id)
     editingPost.value = data
   } catch (err) {
-    // fallback to minimal post if fetch fails
     editingPost.value = post
   }
 }
@@ -226,7 +228,6 @@ function refreshList() {
   listRefreshKey.value += 1
 }
 
-// open post detail when query param `post` exists
 watch(
   () => route.query.post,
   (val) => {
@@ -242,11 +243,9 @@ watch(
 )
 
 function closeDetail() {
-  // close modal locally
   detailOpen.value = false
   detailPostId.value = null
 
-  // remove query param if present
   if (route.query && route.query.post) {
     const q = { ...route.query }
     delete q.post
@@ -262,12 +261,20 @@ function openView(post) {
 watch(editorOpen, (isOpen) => {
   document.body.style.overflow = isOpen ? 'hidden' : ''
 })
+
+function changeLanguage(language) {
+  locale.value = language
+  if (settings.setLang) settings.setLang(language)
+  localStorage.setItem('welcome-seoul-language', language)
+}
 </script>
 
 <style scoped>
+/* --- keep Community's original layout and styling, and use Home's footer styles exactly --- */
+
 .community-page {
   min-height: 100vh;
-  padding-bottom: 95px;
+  padding-bottom: 32px;
   color: #172137;
   background: #f6f8fc;
 }
@@ -286,11 +293,7 @@ watch(editorOpen, (isOpen) => {
   inset: 0;
   content: "";
   background:
-    linear-gradient(
-      120deg,
-      rgba(255, 255, 255, 0.08),
-      transparent 45%
-    );
+    linear-gradient(120deg, rgba(255,255,255,0.08), transparent 45%);
 }
 
 .hero-decoration {
@@ -417,10 +420,6 @@ watch(editorOpen, (isOpen) => {
   outline: none;
 }
 
-.search-wrap input::placeholder {
-  color: #a1aabd;
-}
-
 .clear-button {
   width: 27px;
   height: 27px;
@@ -469,19 +468,6 @@ watch(editorOpen, (isOpen) => {
   border-radius: 14px;
 }
 
-.community-guide strong {
-  color: #334057;
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.community-guide p {
-  margin: 3px 0 0;
-  color: #8994a6;
-  font-size: 10px;
-  line-height: 1.55;
-}
-
 .post-section {
   margin-top: 29px;
 }
@@ -508,6 +494,113 @@ watch(editorOpen, (isOpen) => {
   color: #7f8b9f;
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* header styles (Home-identical) */
+.home-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 70px;
+  padding: 0 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid #e9edf5;
+  backdrop-filter: blur(16px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-logo {
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 39px;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #5263f4, #7b61ef);
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(82, 99, 244, 0.25);
+}
+
+.brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.brand-copy strong {
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-copy span {
+  overflow: hidden;
+  color: #8a96aa;
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.language-switch {
+  display: flex;
+  padding: 3px;
+  background: #f1f3f8;
+  border: 1px solid #e4e8f1;
+  border-radius: 999px;
+}
+
+.language-switch button {
+  width: 36px;
+  height: 30px;
+  padding: 0;
+  color: #8b96a9;
+  font-size: 11px;
+  font-weight: 800;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+}
+
+.language-switch button.active {
+  color: #fff;
+  background: #5362ee;
+  box-shadow: 0 4px 10px rgba(83, 98, 238, 0.23);
+}
+
+/* Home.vue와 동일한 푸터 */
+.site-footer {
+  padding: 20px 4px 30px;
+  color: #97a1b1;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.site-footer .container {
+  margin: 0;
+  padding: 0;
+}
+
+.site-footer strong {
+  color: #6e7a90;
+  font-size: 12px;
+}
+
+.site-footer p {
+  margin: 3px 0 0;
 }
 
 @media (min-width: 640px) {
