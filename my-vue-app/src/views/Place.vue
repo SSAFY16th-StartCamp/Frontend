@@ -699,7 +699,6 @@ function changeLanguage(language) {
       ? 'en'
       : 'ko'
 
-  updateMapMarker()
 }
 
 function selectImage(index) {
@@ -867,9 +866,6 @@ async function loadPlace() {
     await loadRelatedPosts(
       place.value.id
     )
-
-    await nextTick()
-    initializeMap()
   } catch (loadError) {
     console.error(
       '장소 상세 조회 실패:',
@@ -882,7 +878,24 @@ async function loadPlace() {
       loadError.message ||
       text.value.loadFailed
   } finally {
+    /*
+     * 먼저 loading을 false로 바꿔야
+     * template의 지도 div가 DOM에 생성된다.
+     */
     loading.value = false
+  }
+
+  /*
+   * 지도 div가 실제 DOM에 나타난 뒤
+   * Leaflet 지도를 생성한다.
+   */
+  await nextTick()
+
+  if (
+    place.value &&
+    hasCoordinates.value
+  ) {
+    initializeMap()
   }
 }
 
@@ -896,19 +909,21 @@ function initializeMap() {
 
   destroyMap()
 
+  const position = [
+    latitude.value,
+    longitude.value
+  ]
+
   mapInstance = L.map(
     mapElement.value,
     {
       zoomControl: false,
-      scrollWheelZoom: false
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      minZoom: 10,
+      maxZoom: 19
     }
-  ).setView(
-    [
-      latitude.value,
-      longitude.value
-    ],
-    15
-  )
+  ).setView(position, 15)
 
   L.control
     .zoom({
@@ -935,35 +950,30 @@ function initializeMap() {
     `,
 
     iconSize: [46, 52],
-    iconAnchor: [23, 50],
-    popupAnchor: [0, -48]
+    iconAnchor: [23, 50]
   })
 
   markerInstance = L.marker(
-    [
-      latitude.value,
-      longitude.value
-    ],
+    position,
     {
-      icon: markerIcon
+      icon: markerIcon,
+
+      /*
+       * 위치 확인용 지도이므로
+       * 핀 클릭 동작은 사용하지 않는다.
+       */
+      interactive: false
     }
-  )
-    .addTo(mapInstance)
-    .bindPopup(displayTitle.value)
+  ).addTo(mapInstance)
 
   setTimeout(() => {
-    mapInstance?.invalidateSize()
+    if (!mapInstance) {
+      return
+    }
+
+    mapInstance.invalidateSize()
+    mapInstance.setView(position, 15)
   }, 100)
-}
-
-function updateMapMarker() {
-  if (!markerInstance) {
-    return
-  }
-
-  markerInstance.setPopupContent(
-    displayTitle.value
-  )
 }
 
 function destroyMap() {
@@ -995,8 +1005,6 @@ watch(
       language === 'en'
         ? 'en'
         : 'ko'
-
-    updateMapMarker()
   },
   {
     immediate: true
