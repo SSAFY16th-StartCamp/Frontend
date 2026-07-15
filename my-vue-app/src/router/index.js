@@ -3,12 +3,14 @@ import Home from '../views/Home.vue'
 import Community from '../views/Community.vue'
 import MapView from '../views/Map.vue'
 import Location from '../views/Location.vue'
+import Place from '../views/Place.vue'
 
 const routes = [
   { path: '/', name: 'Home', component: Home },
   { path: '/community', name: 'Community', component: Community },
   { path: '/map', name: 'Map', component: MapView },
-  { path: '/location', name: 'Location', component: Location }
+  { path: '/location', name: 'Location', component: Location },
+  { path: '/place/:location_id', name: 'Place', component: Place }
 ]
 
 export default createRouter({

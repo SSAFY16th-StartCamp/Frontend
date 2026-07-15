@@ -7,7 +7,12 @@ import {
   ref,
   watch
 } from 'vue'
-import { useRouter } from 'vue-router'
+
+import {
+  useRoute,
+  useRouter
+} from 'vue-router'
+
 import { useI18n } from 'vue-i18n'
 
 import L from 'leaflet'
@@ -17,59 +22,137 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
+import useLocations from '../composables/useLocations'
+import { useSettings } from '../stores/settings'
+
 L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   iconRetinaUrl: markerIcon2x,
   shadowUrl: markerShadow
 })
 
+const route = useRoute()
 const router = useRouter()
+
 const { locale } = useI18n()
+
+const settings = useSettings()
+const locationApi = useLocations()
 
 const mapElement = ref(null)
 
-const keyword = ref('')
-const selectedCategory = ref('all')
+const keyword = ref(
+  String(route.query.q || '')
+)
+
+const selectedCategory = ref(
+  String(
+    route.query.category ||
+    'all'
+  )
+)
+
 const selectedDistrict = ref('all')
 const selectedPlace = ref(null)
 
-const loading = ref(false)
+const loading = ref(true)
 const apiError = ref(false)
+const errorMessage = ref('')
+
 const places = ref([])
 
 let mapInstance = null
 let markerLayer = null
+let userMarker = null
 
-const SEOUL_CENTER = [37.5665, 126.978]
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:8000/api/v1'
+const userLocation = ref(null)
+const locationPermissionError = ref('')
+
+const SEOUL_CENTER = [
+  37.5665,
+  126.978
+]
+
+const DEFAULT_ZOOM = 16
+const CAMERA_RADIUS_METERS = 1500
+
+const cameraCenter = ref({
+  lat: SEOUL_CENTER[0],
+  lng: SEOUL_CENTER[1]
+})
+
+const CATEGORY_COLORS = {
+  attraction: '#5362ee',
+  culture: '#9c5de8',
+  festival: '#f04464',
+  course: '#f59e0b',
+  leisure: '#10a878',
+  accommodation: '#168fe3',
+  shopping: '#ec4899',
+  restaurant: '#f97316'
+}
+
+function categoryColor(category) {
+  return (
+    CATEGORY_COLORS[category] ||
+    '#64748b'
+  )
+}
 
 const text = computed(() => {
-  const english = locale.value === 'en'
+  const english =
+    locale.value === 'en'
 
   return english
     ? {
-        brandSubtitle: 'Local tips for global travelers',
-        pageBadge: 'Seoul place map',
-        pageTitle: 'Explore Seoul on the map',
+        brandSubtitle:
+          'Local tips for global travelers',
+
+        pageBadge:
+          'Seoul place map',
+
+        pageTitle:
+          'Explore Seoul on the map',
+
         pageDescription:
           'Find attractions, festivals, cultural facilities and local travel information across Seoul.',
-        searchPlaceholder: 'Search places or districts',
-        search: 'Search',
-        all: 'All',
-        district: 'District',
-        category: 'Category',
-        result: 'places found',
-        mapLoading: 'Loading Seoul places...',
-        resetMap: 'Reset map',
-        currentResults: 'Current results',
+
+        searchPlaceholder:
+          'Search places or districts',
+
+        search:
+          'Search',
+
+        all:
+          'All',
+
+        district:
+          'District',
+
+        result:
+          'places found',
+
+        mapLoading:
+          'Loading Seoul places...',
+
+        resetMap:
+          'Reset map',
+
         apiNotice:
-          'The server could not be reached, so sample Seoul data is displayed.',
-        viewDetails: 'View details',
-        relatedCommunity: 'Community posts',
-        close: 'Close',
-        dataSource: 'Data source: Korea Tourism Organization TourAPI 4.0',
+          'Could not load location data from the server.',
+
+        viewDetails:
+          'View details',
+
+        relatedCommunity:
+          'Community posts',
+
+        close:
+          'Close',
+
+        dataSource:
+          'Data source: Korea Tourism Organization TourAPI 4.0',
+
         categories: {
           all: 'All',
           attraction: 'Attractions',
@@ -78,30 +161,59 @@ const text = computed(() => {
           course: 'Courses',
           leisure: 'Leisure',
           accommodation: 'Stay',
-          shopping: 'Shopping'
+          shopping: 'Shopping',
+          restaurant: 'Restaurants'
         }
       }
     : {
-        brandSubtitle: '외국인을 위한 서울 로컬 정보',
-        pageBadge: '서울 장소 지도',
-        pageTitle: '지도에서 서울을 둘러보세요',
+        brandSubtitle:
+          '외국인을 위한 서울 로컬 정보',
+
+        pageBadge:
+          '서울 장소 지도',
+
+        pageTitle:
+          '지도에서 서울을 둘러보세요',
+
         pageDescription:
           '서울의 관광지, 축제, 문화시설과 외국인 여행자를 위한 지역 정보를 한눈에 확인하세요.',
-        searchPlaceholder: '장소명이나 자치구를 검색하세요',
-        search: '검색',
-        all: '전체',
-        district: '자치구',
-        category: '카테고리',
-        result: '개의 장소',
-        mapLoading: '서울 장소를 불러오고 있어요...',
-        resetMap: '지도 초기화',
-        currentResults: '현재 검색 결과',
+
+        searchPlaceholder:
+          '장소명이나 자치구를 검색하세요',
+
+        search:
+          '검색',
+
+        all:
+          '전체',
+
+        district:
+          '자치구',
+
+        result:
+          '개의 장소',
+
+        mapLoading:
+          '서울 장소를 불러오고 있어요...',
+
+        resetMap:
+          '지도 초기화',
+
         apiNotice:
-          '백엔드 서버에 연결하지 못해 서울 샘플 데이터를 표시하고 있습니다.',
-        viewDetails: '상세 보기',
-        relatedCommunity: '관련 커뮤니티 글',
-        close: '닫기',
-        dataSource: '데이터 출처: 한국관광공사 TourAPI 4.0',
+          '백엔드에서 장소 데이터를 불러오지 못했습니다.',
+
+        viewDetails:
+          '상세 보기',
+
+        relatedCommunity:
+          '관련 커뮤니티 글',
+
+        close:
+          '닫기',
+
+        dataSource:
+          '데이터 출처: 한국관광공사 TourAPI 4.0',
+
         categories: {
           all: '전체',
           attraction: '관광지',
@@ -110,219 +222,303 @@ const text = computed(() => {
           course: '여행코스',
           leisure: '레포츠',
           accommodation: '숙박',
-          shopping: '쇼핑'
+          shopping: '쇼핑',
+          restaurant: '음식점'
         }
       }
 })
 
 const categoryOptions = [
-  { id: 'all', icon: '✨' },
-  { id: 'attraction', icon: '🏛️' },
-  { id: 'culture', icon: '🎨' },
-  { id: 'festival', icon: '🎉' },
-  { id: 'course', icon: '🚶' },
-  { id: 'leisure', icon: '🚲' },
-  { id: 'accommodation', icon: '🛏️' },
-  { id: 'shopping', icon: '🛍️' }
+  {
+    id: 'all',
+    icon: '✨'
+  },
+  {
+    id: 'attraction',
+    icon: '🏛️'
+  },
+  {
+    id: 'culture',
+    icon: '🎨'
+  },
+  {
+    id: 'festival',
+    icon: '🎉'
+  },
+  {
+    id: 'course',
+    icon: '🚶'
+  },
+  {
+    id: 'leisure',
+    icon: '🚲'
+  },
+  {
+    id: 'accommodation',
+    icon: '🛏️'
+  },
+  {
+    id: 'shopping',
+    icon: '🛍️'
+  },
+  {
+    id: 'restaurant',
+    icon: '🍽️'
+  }
 ]
 
-const result =
-  await locationApi.fetchAllLocations({
-    pageSize: 10,
-    maxItems: 20
-  })
-
-places.value = result.items.filter(
-  (place) =>
-    Number.isFinite(place.lat) &&
-    Number.isFinite(place.lng)
-)
-
 const districts = computed(() => {
-  return [...new Set(places.value.map((place) => place.district))]
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, 'ko'))
+  return [
+    ...new Set(
+      places.value
+        .map((place) =>
+          place.district
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, 'ko')
+  )
 })
 
 const filteredPlaces = computed(() => {
-  const normalizedKeyword = keyword.value.trim().toLowerCase()
-
-  return places.value.filter((place) => {
-    const matchesCategory =
-      selectedCategory.value === 'all' ||
-      place.category === selectedCategory.value
-
-    const matchesDistrict =
-      selectedDistrict.value === 'all' ||
-      place.district === selectedDistrict.value
-
-    const searchableText = [
-      place.title,
-      place.titleEn,
-      place.address,
-      place.district
-    ]
-      .filter(Boolean)
-      .join(' ')
+  const normalizedKeyword =
+    keyword.value
+      .trim()
       .toLowerCase()
 
-    const matchesKeyword =
-      !normalizedKeyword ||
-      searchableText.includes(normalizedKeyword)
+  return places.value.filter(
+    (place) => {
+      const matchesCategory =
+        selectedCategory.value ===
+          'all' ||
+        place.category ===
+          selectedCategory.value
 
-    return matchesCategory && matchesDistrict && matchesKeyword
-  })
+      const matchesDistrict =
+        selectedDistrict.value ===
+          'all' ||
+        place.district ===
+          selectedDistrict.value
+
+      const searchableText = [
+        place.title,
+        place.titleEn,
+
+        place.address,
+        place.addressEn,
+
+        place.koAddress,
+        place.enAddress,
+
+        place.raw?.KO_NAME,
+        place.raw?.EN_NAME,
+        place.raw?.ko_address,
+        place.raw?.en_address,
+
+        place.district,
+        place.districtEn
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const matchesKeyword =
+        !normalizedKeyword ||
+        searchableText.includes(
+          normalizedKeyword
+        )
+
+      return (
+        matchesCategory &&
+        matchesDistrict &&
+        matchesKeyword &&
+        Number.isFinite(place.lat) &&
+        Number.isFinite(place.lng)
+      )
+    }
+  )
 })
 
-function displayTitle(place) {
-  if (locale.value === 'en') {
-    return place.titleEn || place.title
+const visiblePlaces = computed(() => {
+  const center = L.latLng(
+    cameraCenter.value.lat,
+    cameraCenter.value.lng
+  )
+
+  return filteredPlaces.value.filter(
+    (place) => {
+      if (
+        !Number.isFinite(place.lat) ||
+        !Number.isFinite(place.lng)
+      ) {
+        return false
+      }
+
+      const placePosition = L.latLng(
+        place.lat,
+        place.lng
+      )
+
+      const distance =
+        center.distanceTo(placePosition)
+
+      return (
+        distance <=
+        CAMERA_RADIUS_METERS
+      )
+    }
+  )
+})
+
+function updateCameraCenter() {
+  if (!mapInstance) {
+    return
   }
 
-  return place.title
+  const center =
+    mapInstance.getCenter()
+
+  cameraCenter.value = {
+    lat: center.lat,
+    lng: center.lng
+  }
+
+  /*
+   * 선택된 장소가 카메라 중심에서
+   * 5km 밖으로 나가면 카드도 닫는다.
+   */
+  if (selectedPlace.value) {
+    const selectedDistance =
+      center.distanceTo(
+        L.latLng(
+          selectedPlace.value.lat,
+          selectedPlace.value.lng
+        )
+      )
+
+    if (
+      selectedDistance >
+      CAMERA_RADIUS_METERS
+    ) {
+      selectedPlace.value = null
+    }
+  }
+
+  renderMarkers()
+}
+
+function displayTitle(place) {
+  if (!place) {
+    return ''
+  }
+
+  if (locale.value === 'en') {
+    return (
+      place.titleEn ||
+      place.raw?.EN_NAME ||
+      place.title ||
+      place.raw?.KO_NAME ||
+      ''
+    )
+  }
+
+  return (
+    place.title ||
+    place.raw?.KO_NAME ||
+    place.titleEn ||
+    place.raw?.EN_NAME ||
+    ''
+  )
+}
+
+function displayAddress(place) {
+  if (!place) {
+    return ''
+  }
+
+  if (locale.value === 'en') {
+    return (
+      place.addressEn ||
+      place.enAddress ||
+      place.raw?.en_address ||
+      place.address ||
+      place.koAddress ||
+      place.raw?.ko_address ||
+      ''
+    )
+  }
+
+  return (
+    place.address ||
+    place.koAddress ||
+    place.raw?.ko_address ||
+    place.addressEn ||
+    place.enAddress ||
+    place.raw?.en_address ||
+    ''
+  )
+}
+
+function displayDistrict(place) {
+  if (!place) {
+    return ''
+  }
+
+  if (locale.value === 'en') {
+    return (
+      place.districtEn ||
+      place.district ||
+      ''
+    )
+  }
+
+  return (
+    place.district ||
+    place.districtEn ||
+    ''
+  )
 }
 
 function changeLanguage(language) {
   locale.value = language
-  localStorage.setItem('welcome-seoul-language', language)
+  settings.setLang(language)
+
+  localStorage.setItem(
+    'welcome-seoul-language',
+    language
+  )
 }
 
 function categoryIcon(category) {
   return (
-    categoryOptions.find((item) => item.id === category)?.icon ||
+    categoryOptions.find(
+      (item) =>
+        item.id === category
+    )?.icon ||
     '📍'
   )
 }
 
-function extractDistrict(address = '') {
-  const matched = address.match(
-    /서울(?:특별시)?\s+([가-힣]+구)/
-  )
-
-  return matched?.[1] || ''
-}
-
-function convertCategory(contentTypeId) {
-  const categoryMap = {
-    12: 'attraction',
-    14: 'culture',
-    15: 'festival',
-    25: 'course',
-    28: 'leisure',
-    32: 'accommodation',
-    38: 'shopping',
-    39: 'restaurant'
-  }
-
-  return categoryMap[Number(contentTypeId)] || 'attraction'
-}
-
-function normalizePlace(item) {
-  const lat = Number(
-    item.lat ??
-      item.latitude ??
-      item.mapy
-  )
-
-  const lng = Number(
-    item.lng ??
-      item.longitude ??
-      item.mapx
-  )
-
-  return {
-    id: String(
-      item.id ??
-        item.contentid ??
-        item.source_id ??
-        crypto.randomUUID()
-    ),
-    category:
-      item.category ||
-      convertCategory(
-        item.content_type_id ??
-          item.contenttypeid
-      ),
-    title:
-      item.title ||
-      item.name ||
-      '',
-    titleEn:
-      item.title_en ||
-      item.name_en ||
-      '',
-    address:
-      item.address ||
-      item.addr1 ||
-      '',
-    district:
-      item.district ||
-      extractDistrict(
-        item.address ||
-          item.addr1 ||
-          ''
-      ),
-    lat,
-    lng,
-    image:
-      item.image_url ||
-      item.firstimage ||
-      item.thumbnail_url ||
-      ''
-  }
-}
-
-async function loadPlaces() {
-  loading.value = true
-  apiError.value = false
-
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/locations?page=1&size=500`
-    )
-
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status}`
-      )
-    }
-
-    const data = await response.json()
-    const items = Array.isArray(data)
-      ? data
-      : data.items || []
-
-    const normalizedItems = items
-      .map(normalizePlace)
-      .filter(
-        (place) =>
-          Number.isFinite(place.lat) &&
-          Number.isFinite(place.lng)
-      )
-
-    places.value =
-      normalizedItems.length > 0
-        ? normalizedItems
-        : samplePlaces
-  } catch (error) {
-    console.error(
-      '장소 데이터 로딩 실패:',
-      error
-    )
-
-    places.value = samplePlaces
-    apiError.value = true
-  } finally {
-    loading.value = false
-  }
-}
-
 function initializeMap() {
-  mapInstance = L.map(mapElement.value, {
-    zoomControl: false,
-    minZoom: 10,
-    maxZoom: 19
-  }).setView(SEOUL_CENTER, 12)
+  if (
+    !mapElement.value ||
+    mapInstance
+  ) {
+    return
+  }
+
+  mapInstance = L.map(
+    mapElement.value,
+    {
+      zoomControl: false,
+      minZoom: 10,
+      maxZoom: 19
+    }
+  ).setView(
+    SEOUL_CENTER,
+    DEFAULT_ZOOM
+  )
 
   L.control
     .zoom({
@@ -339,81 +535,112 @@ function initializeMap() {
     }
   ).addTo(mapInstance)
 
-  markerLayer = L.layerGroup().addTo(mapInstance)
+  markerLayer =
+    L.layerGroup().addTo(
+      mapInstance
+    )
+
+  const center =
+    mapInstance.getCenter()
+
+  cameraCenter.value = {
+    lat: center.lat,
+    lng: center.lng
+  }
+
+  /*
+   * 지도 이동 또는 줌 완료 후
+   * 현재 카메라 중심 기준으로
+   * 5km 이내 핀을 다시 그린다.
+   */
+  mapInstance.on(
+    'moveend',
+    updateCameraCenter
+  )
 }
 
-function createPlaceIcon(place, isSelected = false) {
+function createPlaceIcon(
+  place,
+  isSelected = false
+) {
+  const markerColor =
+    categoryColor(place.category)
+
   return L.divIcon({
     className: 'custom-marker-wrapper',
+
     html: `
-      <div class="place-marker ${
-        isSelected ? 'selected' : ''
-      }">
-        <span>${categoryIcon(place.category)}</span>
-      </div>
+      <div
+        class="place-marker ${
+          isSelected
+            ? 'selected'
+            : ''
+        }"
+        style="
+          --marker-color: ${markerColor};
+        "
+      ></div>
     `,
-    iconSize: [42, 50],
-    iconAnchor: [21, 48],
-    popupAnchor: [0, -48]
+
+    iconSize: [25, 30],
+    iconAnchor: [12, 28],
+    popupAnchor: [0, -25]
   })
 }
 
-function renderMarkers(fitBounds = false) {
-  if (!mapInstance || !markerLayer) {
+function renderMarkers() {
+  if (
+    !mapInstance ||
+    !markerLayer
+  ) {
     return
   }
 
   markerLayer.clearLayers()
 
-  const validPlaces = filteredPlaces.value.filter(
-    (place) =>
-      Number.isFinite(place.lat) &&
-      Number.isFinite(place.lng)
+  visiblePlaces.value.forEach(
+    (place) => {
+      const marker = L.marker(
+        [
+          place.lat,
+          place.lng
+        ],
+        {
+          icon: createPlaceIcon(
+            place,
+            selectedPlace.value?.id ===
+              place.id
+          )
+        }
+      )
+
+      marker.on('click', () => {
+        selectPlace(place)
+      })
+
+      marker.bindTooltip(
+        displayTitle(place),
+        {
+          direction: 'top',
+          offset: [0, -28],
+          className:
+            'place-tooltip'
+        }
+      )
+
+      marker.addTo(markerLayer)
+    }
   )
-
-  const bounds = []
-
-  validPlaces.forEach((place) => {
-    const marker = L.marker(
-      [place.lat, place.lng],
-      {
-        icon: createPlaceIcon(
-          place,
-          selectedPlace.value?.id === place.id
-        )
-      }
-    )
-
-    marker.on('click', () => {
-      selectPlace(place)
-    })
-
-    marker.bindTooltip(
-      displayTitle(place),
-      {
-        direction: 'top',
-        offset: [0, -40],
-        className: 'place-tooltip'
-      }
-    )
-
-    marker.addTo(markerLayer)
-    bounds.push([place.lat, place.lng])
-  })
-
-  if (fitBounds && bounds.length > 0) {
-    mapInstance.fitBounds(bounds, {
-      padding: [45, 45],
-      maxZoom: 14
-    })
-  }
 }
 
 function selectPlace(place) {
   selectedPlace.value = place
 
   mapInstance?.flyTo(
-    [place.lat, place.lng],
+    [
+      place.lat,
+      place.lng
+    ],
     Math.max(
       mapInstance.getZoom(),
       15
@@ -423,23 +650,28 @@ function selectPlace(place) {
     }
   )
 
-  renderMarkers(false)
+  renderMarkers()
 }
 
 function closeSelectedPlace() {
   selectedPlace.value = null
-  renderMarkers(false)
+  renderMarkers()
 }
 
 function applySearch() {
-  closeSelectedPlace()
-  renderMarkers(true)
+  selectedPlace.value = null
+  renderMarkers()
 }
 
 function selectCategory(category) {
-  selectedCategory.value = category
+  selectedCategory.value =
+    category
+
   selectedPlace.value = null
-  nextTick(() => renderMarkers(true))
+
+  nextTick(() => {
+    renderMarkers()
+  })
 }
 
 function resetMap() {
@@ -449,11 +681,11 @@ function resetMap() {
   selectedPlace.value = null
 
   nextTick(() => {
-    renderMarkers(false)
+    renderMarkers()
 
     mapInstance?.flyTo(
       SEOUL_CENTER,
-      12,
+      DEFAULT_ZOOM,
       {
         duration: 0.7
       }
@@ -470,11 +702,331 @@ function openCommunity(place) {
   })
 }
 
+function openPlaceDetail(place) {
+  router.push(
+    `/place/${place.id}`
+  )
+}
+
+function getCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(
+        new Error(
+          locale.value === 'en'
+            ? 'Geolocation is not supported by this browser.'
+            : '현재 브라우저에서는 위치 기능을 지원하지 않습니다.'
+        )
+      )
+
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        })
+      },
+
+      (error) => {
+        let message = ''
+
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            message =
+              locale.value === 'en'
+                ? 'Location permission was denied.'
+                : '위치 권한이 거부되었습니다.'
+            break
+
+          case error.POSITION_UNAVAILABLE:
+            message =
+              locale.value === 'en'
+                ? 'Your location is currently unavailable.'
+                : '현재 위치 정보를 확인할 수 없습니다.'
+            break
+
+          case error.TIMEOUT:
+            message =
+              locale.value === 'en'
+                ? 'The location request timed out.'
+                : '위치 요청 시간이 초과되었습니다.'
+            break
+
+          default:
+            message =
+              locale.value === 'en'
+                ? 'Could not determine your location.'
+                : '현재 위치를 확인하지 못했습니다.'
+        }
+
+        reject(new Error(message))
+      },
+
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000
+      }
+    )
+  })
+}
+
+function calculateDistance(
+  lat1,
+  lng1,
+  lat2,
+  lng2
+) {
+  const EARTH_RADIUS_KM = 6371
+
+  const toRadians = (degree) =>
+    degree * (Math.PI / 180)
+
+  const latDifference =
+    toRadians(lat2 - lat1)
+
+  const lngDifference =
+    toRadians(lng2 - lng1)
+
+  const value =
+    Math.sin(latDifference / 2) ** 2 +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(lngDifference / 2) ** 2
+
+  const angle =
+    2 *
+    Math.atan2(
+      Math.sqrt(value),
+      Math.sqrt(1 - value)
+    )
+
+  return EARTH_RADIUS_KM * angle
+}
+
+function findNearestPlace(location) {
+  const validPlaces = places.value.filter(
+    (place) =>
+      Number.isFinite(place.lat) &&
+      Number.isFinite(place.lng)
+  )
+
+  if (!validPlaces.length) {
+    return null
+  }
+
+  return validPlaces.reduce(
+    (nearest, place) => {
+      const distance =
+        calculateDistance(
+          location.lat,
+          location.lng,
+          place.lat,
+          place.lng
+        )
+
+      if (
+        !nearest ||
+        distance < nearest.distance
+      ) {
+        return {
+          place,
+          distance
+        }
+      }
+
+      return nearest
+    },
+    null
+  )
+}
+
+function renderUserMarker(location) {
+  if (!mapInstance) {
+    return
+  }
+
+  if (userMarker) {
+    userMarker.remove()
+    userMarker = null
+  }
+
+  userMarker = L.circleMarker(
+    [location.lat, location.lng],
+    {
+      radius: 9,
+      color: '#ffffff',
+      weight: 3,
+      fillColor: '#2563eb',
+      fillOpacity: 1
+    }
+  )
+    .addTo(mapInstance)
+    .bindPopup(
+      locale.value === 'en'
+        ? 'My location'
+        : '내 위치'
+    )
+}
+
+async function focusOnCurrentLocation() {
+  locationPermissionError.value = ''
+
+  try {
+    const location =
+      await getCurrentPosition()
+
+    userLocation.value = location
+
+    renderUserMarker(location)
+
+    const nearest =
+      findNearestPlace(location)
+
+    if (!nearest) {
+      mapInstance?.flyTo(
+        [location.lat, location.lng],
+        DEFAULT_ZOOM,
+        {
+          duration: 0.8
+        }
+      )
+
+      return
+    }
+
+    selectedPlace.value =
+      nearest.place
+
+    renderMarkers()
+
+    mapInstance?.fitBounds(
+      [
+        [
+          location.lat,
+          location.lng
+        ],
+        [
+          nearest.place.lat,
+          nearest.place.lng
+        ]
+      ],
+      {
+        padding: [65, 65],
+        maxZoom: DEFAULT_ZOOM
+      }
+    )
+
+    console.log(
+      '현재 위치에서 가장 가까운 장소:',
+      {
+        place: nearest.place,
+        distanceKm:
+          nearest.distance
+      }
+    )
+  } catch (error) {
+    console.warn(
+      '현재 위치 조회 실패:',
+      error
+    )
+
+    locationPermissionError.value =
+      error.message
+
+    mapInstance?.flyTo(
+      SEOUL_CENTER,
+      DEFAULT_ZOOM
+    )
+  }
+}
+
+async function loadPlaces() {
+  loading.value = true
+  apiError.value = false
+  errorMessage.value = ''
+
+  try {
+    const result =
+      await locationApi
+        .fetchAllLocations({
+          pageSize: 100,
+
+          // 지도 성능을 위해 제한
+          maxItems: 1000
+        })
+
+    places.value =
+      (result.items || []).filter(
+        (place) =>
+          Number.isFinite(
+            place.lat
+          ) &&
+          Number.isFinite(
+            place.lng
+          )
+      )
+
+    await nextTick()
+    renderMarkers()
+
+    const requestedPlaceId =
+      String(
+        route.query.place ||
+        ''
+      )
+
+    if (requestedPlaceId) {
+      const target =
+        places.value.find(
+          (place) =>
+            place.id === requestedPlaceId
+        )
+
+      if (target) {
+        selectPlace(target)
+        return
+      }
+    }
+
+    /*
+    * 특정 장소를 지정해서 들어온 것이 아니라면
+    * 현재 위치 기준으로 가장 가까운 장소를 연다.
+    */
+    await focusOnCurrentLocation()
+  } catch (error) {
+    console.error(
+      '지도 장소 조회 실패:',
+      error
+    )
+
+    places.value = []
+    apiError.value = true
+
+    errorMessage.value =
+      error.message ||
+      text.value.apiNotice
+  } finally {
+    loading.value = false
+  }
+}
+
 watch(
-  selectedDistrict,
+  [
+    keyword,
+    selectedCategory,
+    selectedDistrict
+  ],
   () => {
     selectedPlace.value = null
-    nextTick(() => renderMarkers(true))
+
+    nextTick(() => {
+      renderMarkers()
+    })
   }
 )
 
@@ -482,17 +1034,34 @@ watch(
   () => locale.value,
   (language) => {
     document.documentElement.lang =
-      language === 'en' ? 'en' : 'ko'
+      language === 'en'
+        ? 'en'
+        : 'ko'
 
-    renderMarkers(false)
+    renderMarkers()
+
+    if (
+      userMarker &&
+      userLocation.value
+    ) {
+      userMarker.bindPopup(
+        language === 'en'
+          ? 'My location'
+          : '내 위치'
+      )
+    }
+  },
+  {
+    immediate: true
   }
 )
 
 onMounted(async () => {
   await nextTick()
+
   initializeMap()
+
   await loadPlaces()
-  renderMarkers(true)
 
   setTimeout(() => {
     mapInstance?.invalidateSize()
@@ -500,9 +1069,16 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (userMarker) {
+    userMarker.remove()
+    userMarker = null
+  }
+
+  markerLayer?.clearLayers()
+  markerLayer = null
+
   mapInstance?.remove()
   mapInstance = null
-  markerLayer = null
 })
 </script>
 
@@ -643,6 +1219,28 @@ onBeforeUnmount(() => {
             {{ text.categories[category.id] }}
           </button>
         </div>
+
+        <div class="marker-legend">
+          <span
+            v-for="category in categoryOptions.filter(
+              (item) => item.id !== 'all'
+            )"
+            :key="category.id"
+          >
+            <i
+              :style="{
+                backgroundColor:
+                  categoryColor(category.id)
+              }"
+            ></i>
+
+            {{
+              text.categories[
+                category.id
+              ]
+            }}
+          </span>
+        </div>
       </section>
 
       <div
@@ -653,9 +1251,30 @@ onBeforeUnmount(() => {
         {{ text.apiNotice }}
       </div>
 
+      <div
+        v-if="locationPermissionError"
+        class="location-notice"
+      >
+        <span>📍</span>
+
+        <div>
+          <strong>
+            {{
+              locale === 'en'
+                ? 'Location unavailable'
+                : '현재 위치를 사용할 수 없어요'
+            }}
+          </strong>
+
+          <p>
+            {{ locationPermissionError }}
+          </p>
+        </div>
+      </div>
+
       <section class="map-card">
         <div class="map-result-badge">
-          <strong>{{ filteredPlaces.length }}</strong>
+          <strong>{{ visiblePlaces.length }}</strong>
           {{ text.result }}
         </div>
 
@@ -730,7 +1349,7 @@ onBeforeUnmount(() => {
                 <circle cx="12" cy="10" r="2.5" />
               </svg>
 
-              {{ selectedPlace.address }}
+              {{ displayAddress(selectedPlace) }}
             </p>
 
             <div class="place-actions">
@@ -746,12 +1365,9 @@ onBeforeUnmount(() => {
                 type="button"
                 class="secondary-place-button"
                 @click="
-                  router.push({
-                    path: '/map',
-                    query: {
-                      place: selectedPlace.id
-                    }
-                  })
+                  openPlaceDetail(
+                    selectedPlace
+                  )
                 "
               >
                 {{ text.viewDetails }}
@@ -1042,6 +1658,38 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+.marker-legend {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin-top: 9px;
+  padding: 2px 1px;
+  scrollbar-width: none;
+}
+
+.marker-legend::-webkit-scrollbar {
+  display: none;
+}
+
+.marker-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+
+  color: #778398;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.marker-legend i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
 .category-chip {
   display: inline-flex;
   align-items: center;
@@ -1075,6 +1723,35 @@ onBeforeUnmount(() => {
   background: #fff9df;
   border: 1px solid #f0e2a9;
   border-radius: 12px;
+}
+
+.location-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  color: #6c7484;
+  background: #fff;
+  border: 1px solid #e1e5ed;
+  border-radius: 13px;
+}
+
+.location-notice > span {
+  flex-shrink: 0;
+  font-size: 17px;
+}
+
+.location-notice strong {
+  display: block;
+  color: #3d485e;
+  font-size: 11px;
+}
+
+.location-notice p {
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .map-card {
@@ -1289,31 +1966,36 @@ onBeforeUnmount(() => {
 
 :deep(.place-marker) {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  font-size: 19px;
-  background: #fff;
-  border: 3px solid #5362ee;
-  border-radius: 15px 15px 15px 3px;
-  box-shadow: 0 8px 18px rgba(36, 45, 87, 0.28);
-  transform: rotate(-45deg);
-  transition: 0.2s ease;
-}
+  width: 20px;
+  height: 20px;
 
-:deep(.place-marker span) {
-  transform: rotate(45deg);
+  background: var(--marker-color);
+  border: 2px solid #fff;
+  border-radius: 50% 50% 50% 8%;
+
+  box-shadow:
+    0 4px 10px
+    rgba(30, 41, 59, 0.24);
+
+  transform: rotate(-45deg);
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 :deep(.place-marker.selected) {
-  color: #fff;
-  background: linear-gradient(135deg, #5362ee, #735be8);
-  border-color: #fff;
+  border-width: 3px;
+
   box-shadow:
-    0 0 0 4px rgba(83, 98, 238, 0.22),
-    0 10px 22px rgba(36, 45, 87, 0.35);
-  transform: rotate(-45deg) scale(1.12);
+    0 0 0 3px
+    rgba(83, 98, 238, 0.2),
+    0 6px 14px
+    rgba(30, 41, 59, 0.3);
+
+  transform:
+    rotate(-45deg)
+    scale(1.25);
 }
 
 :deep(.place-tooltip) {

@@ -287,9 +287,29 @@ function displayTitle(item) {
 }
 
 function displayDistrict(item) {
+  if (!item) {
+    return ''
+  }
+
+  if (locale.value === 'en') {
+    return (
+      item.addressEn ||
+      item.enAddress ||
+      item.raw?.en_address ||
+      item.districtEn ||
+      item.address ||
+      item.raw?.ko_address ||
+      ''
+    )
+  }
+
   return (
-    item.district ||
     item.address ||
+    item.koAddress ||
+    item.raw?.ko_address ||
+    item.district ||
+    item.addressEn ||
+    item.raw?.en_address ||
     ''
   )
 }
@@ -342,7 +362,7 @@ function openCategory(category) {
 /* 장소 클릭 → 지도 */
 function openPlace(place) {
   router.push({
-    path: '/map',
+    path: `/place/${place.id}`,
     query: {
       place: place.id,
       category: place.category

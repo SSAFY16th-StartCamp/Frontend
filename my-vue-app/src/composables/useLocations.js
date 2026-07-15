@@ -3,12 +3,14 @@
 import axios from 'axios'
 
 const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL
-)
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_BASE ||
+  'http://localhost:8000'
+).replace(/\/+$/, '')
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
   headers: {
     Accept: 'application/json'
   }
@@ -25,43 +27,84 @@ const CATEGORY_BY_CONTENT_TYPE = {
   39: 'restaurant'
 }
 
-async function requestGet(
-  path,
-  params = {}
-) {
+async function requestGet(path, params = {}) {
+  const requestUrl = `/api/v1${path}`
+
   try {
+    console.log('장소 API 요청:', {
+      baseURL: API_BASE_URL,
+      url: requestUrl,
+      params
+    })
+
     const response = await api.get(
-      `/api/v1${path}`,
+      requestUrl,
       {
         params
       }
     )
 
+    console.log('장소 API 응답:', response.data)
+
     return response.data
   } catch (error) {
-    console.error(
-      '장소 API 요청 실패:',
-      {
-        url: `${API_BASE_URL}/api/v1${path}`,
-        params,
-        error
-      }
-    )
+    const status =
+      error.response?.status
 
-    const message =
-      error.response?.data?.detail ||
-      error.response?.data?.message ||
+    const responseData =
+      error.response?.data
+
+    console.error('장소 API 요청 실패:', {
+      fullUrl:
+        `${API_BASE_URL}${requestUrl}`,
+      status,
+      params,
+      responseData,
+      message: error.message
+    })
+
+    let message =
+      responseData?.detail ||
+      responseData?.message ||
       error.message ||
       '장소 API 요청에 실패했습니다.'
 
-    throw new Error(message)
+    if (
+      Array.isArray(
+        responseData?.detail
+      )
+    ) {
+      message = responseData.detail
+        .map((detail) => {
+          const field =
+            detail.loc?.join('.') ||
+            'request'
+
+          return `${field}: ${detail.msg}`
+        })
+        .join('\n')
+    }
+
+    const requestError =
+      new Error(message)
+
+    requestError.status = status
+    requestError.responseData =
+      responseData
+
+    throw requestError
   }
 }
 
-/**
- * 숫자로 변환할 수 없으면 null 반환
- */
 function toNumber(value) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return null
+  }
+
   const number = Number(value)
 
   return Number.isFinite(number)
@@ -69,13 +112,6 @@ function toNumber(value) {
     : null
 }
 
-/**
- * 주소에서 서울 자치구 추출
- *
- * 예:
- * 서울특별시 종로구 인사동길 10
- * -> 종로구
- */
 function extractDistrict(address = '') {
   const match = String(address).match(
     /서울(?:특별시)?\s+([가-힣]+구)/
@@ -84,9 +120,14 @@ function extractDistrict(address = '') {
   return match?.[1] || ''
 }
 
-/**
- * 태그 데이터 형식 통일
- */
+function extractEnglishDistrict(address = '') {
+  const match = String(address).match(
+    /([A-Za-z]+(?:-[A-Za-z]+)*-gu)/i
+  )
+
+  return match?.[1] || ''
+}
+
 function normalizeTags(tags) {
   if (!Array.isArray(tags)) {
     return []
@@ -110,26 +151,56 @@ function normalizeTags(tags) {
     .filter(Boolean)
 }
 
-/**
- * 백엔드 장소 데이터를
- * 프론트엔드 공통 형식으로 변환
- *
- * 백엔드 정규화 필드와
- * TourAPI 원본 필드를 모두 지원한다.
- */
 export function normalizeLocation(
   item,
   index = 0
 ) {
+  if (!item || typeof item !== 'object') {
+    return {
+      id: `location-${index}`,
+      sourceId: `location-${index}`,
+      category: 'attraction',
+      contentTypeId: null,
+      title: '',
+      titleEn: '',
+      address: '',
+      addressEn: '',
+      addressDetail: '',
+      district: '',
+      districtEn: '',
+      lat: null,
+      lng: null,
+      image: '',
+      thumbnail: '',
+      description: '',
+      descriptionEn: '',
+      telephone: '',
+      zipcode: '',
+      homepageUrl: '',
+      tags: [],
+      viewCount: 0,
+      raw: {}
+    }
+  }
+
   const contentTypeId = Number(
     item.content_type_id ??
       item.contenttypeid ??
       item.contentTypeId
   )
 
-  const address =
+  const koAddress =
+    item.ko_address ||
     item.address ||
     item.addr1 ||
+    item.addr ||
+    ''
+
+  const enAddress =
+    item.en_address ||
+    item.address_en ||
+    item.addr1_en ||
+    item.addressEn ||
     ''
 
   const id =
@@ -144,8 +215,8 @@ export function normalizeLocation(
 
     sourceId: String(
       item.source_id ??
-      item.contentid ??
-      id
+        item.contentid ??
+        id
     ),
 
     category:
@@ -160,14 +231,24 @@ export function normalizeLocation(
     title:
       item.title ||
       item.name ||
+      item.KO_NAME ||
+      item.EN_NAME ||
       '',
 
     titleEn:
       item.title_en ||
       item.name_en ||
+      item.EN_NAME ||
+      item.titleEn ||
       '',
 
-    address,
+    address: koAddress,
+
+    addressEn: enAddress,
+
+    koAddress,
+
+    enAddress,
 
     addressDetail:
       item.address_detail ||
@@ -176,22 +257,32 @@ export function normalizeLocation(
 
     district:
       item.district ||
-      extractDistrict(address),
+      extractDistrict(koAddress),
+
+    districtEn:
+      item.district_en ||
+      item.districtEn ||
+      extractEnglishDistrict(enAddress),
 
     lat: toNumber(
       item.lat ??
         item.latitude ??
-        item.mapy
+        item.mapy ??
+        item.LAT ??
+        item.latitude_gps
     ),
 
     lng: toNumber(
       item.lng ??
         item.longitude ??
-        item.mapx
+        item.mapx ??
+        item.LON ??
+        item.longitude_gps
     ),
 
     image:
       item.image_url ||
+      item.image_url2 ||
       item.firstimage ||
       item.thumbnail_url ||
       '',
@@ -199,6 +290,7 @@ export function normalizeLocation(
     thumbnail:
       item.thumbnail_url ||
       item.firstimage2 ||
+      item.image_url2 ||
       item.image_url ||
       item.firstimage ||
       '',
@@ -208,17 +300,33 @@ export function normalizeLocation(
       item.overview ||
       '',
 
+    descriptionEn:
+      item.description_en ||
+      item.overview_en ||
+      '',
+
     telephone:
       item.telephone ||
       item.tel ||
+      item.TEL ||
+      '',
+
+    zipcode:
+      item.zipcode ||
+      item.postal_code ||
+      item.postal ||
       '',
 
     homepageUrl:
       item.homepage_url ||
       item.homepage ||
+      item.website ||
+      item.url ||
       '',
 
-    tags: normalizeTags(item.tags),
+    tags: normalizeTags(
+      item.tags
+    ),
 
     viewCount: Number(
       item.view_count ??
@@ -230,66 +338,142 @@ export function normalizeLocation(
   }
 }
 
-/**
- * 목록 API 응답 형식 통일
- *
- * 다음 형태를 모두 지원한다.
- *
- * 1. { items: [...] }
- * 2. { results: [...] }
- * 3. { data: [...] }
- * 4. [...]
- */
+function findRawItems(responseData) {
+  if (Array.isArray(responseData)) {
+    return responseData
+  }
+
+  if (
+    Array.isArray(
+      responseData?.items
+    )
+  ) {
+    return responseData.items
+  }
+
+  if (
+    Array.isArray(
+      responseData?.results
+    )
+  ) {
+    return responseData.results
+  }
+
+  if (
+    Array.isArray(
+      responseData?.locations
+    )
+  ) {
+    return responseData.locations
+  }
+
+  if (
+    Array.isArray(
+      responseData?.data
+    )
+  ) {
+    return responseData.data
+  }
+
+  if (
+    Array.isArray(
+      responseData?.data?.items
+    )
+  ) {
+    return responseData.data.items
+  }
+
+  if (
+    Array.isArray(
+      responseData?.data?.results
+    )
+  ) {
+    return responseData.data.results
+  }
+
+  return []
+}
+
+function findMeta(responseData) {
+  if (
+    responseData?.data &&
+    !Array.isArray(responseData.data) &&
+    typeof responseData.data === 'object'
+  ) {
+    return {
+      ...responseData,
+      ...responseData.data
+    }
+  }
+
+  return responseData || {}
+}
+
 function normalizeLocationPage(
   responseData,
   requestedPage,
   requestedSize
 ) {
-  const rawItems = Array.isArray(
-    responseData
-  )
-    ? responseData
-    : responseData.items ||
-      responseData.results ||
-      responseData.data ||
-      []
+  const rawItems =
+    findRawItems(responseData)
+
+  const meta =
+    findMeta(responseData)
+
+  const pagination =
+    meta.pagination ||
+    meta.meta ||
+    {}
 
   const items = rawItems.map(
     (item, index) =>
-      normalizeLocation(item, index)
+      normalizeLocation(
+        item,
+        index
+      )
   )
 
   const page = Number(
-    responseData.page ??
+    meta.page ??
+      pagination.page ??
+      pagination.current_page ??
       requestedPage
   )
 
   const size = Number(
-    responseData.size ??
-      responseData.page_size ??
+    meta.size ??
+      meta.page_size ??
+      pagination.size ??
+      pagination.per_page ??
       requestedSize
   )
 
-  const hasTotal =
-    responseData.total !== undefined
+  const totalValue =
+    meta.total ??
+    meta.count ??
+    pagination.total ??
+    pagination.total_count
 
-  const total = Number(
-    responseData.total ??
-      items.length
-  )
+  const total =
+    totalValue !== undefined
+      ? Number(totalValue)
+      : items.length
 
   const explicitTotalPages =
-    responseData.total_pages ??
-    responseData.totalPages
+    meta.total_pages ??
+    meta.totalPages ??
+    pagination.total_pages ??
+    pagination.last_page
 
   const totalPages =
     explicitTotalPages !== undefined
       ? Number(explicitTotalPages)
-      : hasTotal
+      : totalValue !== undefined
         ? Math.max(
             1,
             Math.ceil(
-              total / Math.max(size, 1)
+              total /
+                Math.max(size, 1)
             )
           )
         : page
@@ -297,33 +481,37 @@ function normalizeLocationPage(
   let hasNext = false
 
   if (
-    responseData.has_next !==
-    undefined
+    meta.has_next !== undefined
   ) {
-    hasNext = Boolean(
-      responseData.has_next
-    )
+    hasNext =
+      Boolean(meta.has_next)
   } else if (
-    responseData.next_page !==
+    pagination.has_next !==
     undefined
   ) {
-    hasNext = Boolean(
-      responseData.next_page
-    )
+    hasNext =
+      Boolean(
+        pagination.has_next
+      )
+  } else if (
+    meta.next_page !== undefined
+  ) {
+    hasNext =
+      Boolean(meta.next_page)
   } else if (
     explicitTotalPages !== undefined
   ) {
     hasNext =
-      page < Number(explicitTotalPages)
-  } else if (hasTotal) {
+      page < totalPages
+  } else if (
+    totalValue !== undefined
+  ) {
     hasNext =
       page * size < total
   } else {
-    // 전체 개수 정보가 없으면
-    // 요청한 개수만큼 반환됐을 때
-    // 다음 페이지가 있다고 판단한다.
     hasNext =
-      rawItems.length === requestedSize
+      rawItems.length >=
+      requestedSize
   }
 
   return {
@@ -337,11 +525,6 @@ function normalizeLocationPage(
 }
 
 export default function useLocations() {
-  /**
-   * 장소 목록 한 페이지 조회
-   *
-   * GET /api/v1/locations
-   */
   async function fetchLocations(
     params = {}
   ) {
@@ -353,20 +536,39 @@ export default function useLocations() {
       params.size || 24
     )
 
+    const query = {
+      page,
+      size
+    }
+
+    if (
+      params.district &&
+      params.district !== 'all'
+    ) {
+      query.district =
+        params.district
+    }
+
+    if (params.q) {
+      query.q = params.q
+    }
+
+    if (params.tag) {
+      query.tag = params.tag
+    }
+
+    /*
+     * 현재 API 명세에는 category가 없으므로
+     * category는 보내지 않는다.
+     *
+     * 프론트에서 전체 데이터를 받은 뒤
+     * category를 필터링한다.
+     */
+
     const responseData =
       await requestGet(
         '/locations',
-        {
-          district: params.district,
-          q: params.q,
-          page,
-          size,
-          tag: params.tag,
-
-          // 백엔드가 category를 지원하면 사용되고,
-          // 현재 지원하지 않으면 FastAPI에서 무시된다.
-          category: params.category
-        }
+        query
       )
 
     return normalizeLocationPage(
@@ -376,18 +578,18 @@ export default function useLocations() {
     )
   }
 
-  /**
-   * 전체 장소를 페이지별로 반복 조회
-   *
-   * Locations.vue에서 전체 데이터를
-   * 불러올 때 사용한다.
-   */
   async function fetchAllLocations({
     district,
     q,
     tag,
-    category,
-    pageSize = 500,
+
+    /*
+     * 500이 아니라 100으로 제한한다.
+     * FastAPI에서 size 최대값을
+     * 100으로 제한한 경우 422를 방지한다.
+     */
+    pageSize = 100,
+
     maxItems = 10000,
     onProgress
   } = {}) {
@@ -397,28 +599,37 @@ export default function useLocations() {
     let currentPage = 1
     let total = 0
     let hasNext = true
+    let safetyCount = 0
 
     while (
       hasNext &&
-      collectedItems.length < maxItems
+      collectedItems.length <
+        maxItems &&
+      safetyCount < 200
     ) {
+      safetyCount += 1
+
       const result =
         await fetchLocations({
           district,
           q,
           tag,
-          category,
           page: currentPage,
           size: pageSize
         })
 
       total = result.total
 
+      let addedCount = 0
+
       result.items.forEach(
         (item) => {
-          if (!usedIds.has(item.id)) {
+          if (
+            !usedIds.has(item.id)
+          ) {
             usedIds.add(item.id)
             collectedItems.push(item)
+            addedCount += 1
           }
         }
       )
@@ -432,38 +643,42 @@ export default function useLocations() {
           result.totalPages
       })
 
-      hasNext =
-        result.hasNext &&
-        result.items.length > 0
+      /*
+       * 서버가 매번 같은 페이지를
+       * 반환하는 경우 무한 요청 방지
+       */
+      if (
+        result.items.length === 0 ||
+        addedCount === 0
+      ) {
+        hasNext = false
+        break
+      }
 
+      hasNext = result.hasNext
       currentPage += 1
     }
 
     return {
-      items: collectedItems.slice(
-        0,
-        maxItems
-      ),
+      items:
+        collectedItems.slice(
+          0,
+          maxItems
+        ),
 
       loaded: Math.min(
         collectedItems.length,
         maxItems
       ),
 
-      total,
+      total:
+        total || collectedItems.length,
 
       truncated:
-        total > maxItems ||
-        collectedItems.length >
-          maxItems
+        total > maxItems
     }
   }
 
-  /**
-   * 장소 상세 조회
-   *
-   * GET /api/v1/locations/{location_id}
-   */
   async function fetchLocation(
     locationId
   ) {
@@ -478,8 +693,18 @@ export default function useLocations() {
         `/locations/${locationId}`
       )
 
+    /*
+     * 상세 응답이
+     * { data: {...} }인 경우 처리
+     */
+    const rawLocation =
+      responseData?.data &&
+      !Array.isArray(responseData.data)
+        ? responseData.data
+        : responseData
+
     return normalizeLocation(
-      responseData
+      rawLocation
     )
   }
 
