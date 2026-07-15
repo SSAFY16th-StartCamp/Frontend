@@ -5,18 +5,24 @@ import {
   ref,
   watch
 } from 'vue'
+
 import {
   useRoute,
   useRouter
 } from 'vue-router'
+
 import { useI18n } from 'vue-i18n'
 
 import useLocations from '../composables/useLocations'
+import { useSettings } from '../stores/settings'
 
 const route = useRoute()
 const router = useRouter()
+
 const { locale } = useI18n()
-const api = useLocations()
+
+const settings = useSettings()
+const locationApi = useLocations()
 
 const allItems = ref([])
 const loading = ref(true)
@@ -32,13 +38,17 @@ const keyword = ref(
 )
 
 const category = ref(
-  String(route.query.category || 'all')
+  String(
+    route.query.category ||
+    'all'
+  )
 )
 
 const district = ref('all')
 const page = ref(1)
 
-const pageSize = 24
+const DISPLAY_PAGE_SIZE = 24
+const API_PAGE_SIZE = 100
 
 const categories = [
   ['all', '✨'],
@@ -53,30 +63,71 @@ const categories = [
 ]
 
 const labels = computed(() => {
-  const isEnglish = locale.value === 'en'
+  const isEnglish =
+    locale.value === 'en'
 
   return isEnglish
     ? {
-        brandSubtitle: 'Browse every Seoul place',
-        title: 'All Seoul places',
+        brandSubtitle:
+          'Browse every Seoul place',
+
+        title:
+          'All Seoul places',
+
         description:
           'Browse attractions, festivals, cultural facilities, accommodations and restaurants loaded from the Seoul tourism API.',
-        search: 'Search place name or address',
-        district: 'District',
-        all: 'All',
-        loading: 'Loading Seoul tourism data',
-        loaded: 'loaded',
-        noResult: 'No matching places found.',
-        loadFailed: 'Could not load location data.',
-        retry: 'Try again',
-        map: 'View on map',
-        community: 'Community',
-        previous: 'Previous',
-        next: 'Next',
-        count: 'places',
-        page: 'Page',
+
+        search:
+          'Search place name or address',
+
+        district:
+          'District',
+
+        all:
+          'All',
+
+        reset:
+          'Reset',
+
+        loading:
+          'Loading Seoul tourism data',
+
+        loaded:
+          'loaded',
+
+        noResult:
+          'No matching places found.',
+
+        loadFailed:
+          'Could not load location data.',
+
+        retry:
+          'Try again',
+
+        map:
+          'View on map',
+
+        community:
+          'Community',
+
+        previous:
+          'Previous',
+
+        next:
+          'Next',
+
+        count:
+          'places',
+
+        page:
+          'Page',
+
         source:
           'Data: Korea Tourism Organization TourAPI 4.0',
+
+        openDetail:
+          'Open place details',
+
         category: {
           all: 'All',
           attraction: 'Attractions',
@@ -90,26 +141,66 @@ const labels = computed(() => {
         }
       }
     : {
-        brandSubtitle: '서울 전체 장소 둘러보기',
-        title: '서울 장소 목록',
+        brandSubtitle:
+          '서울 전체 장소 둘러보기',
+
+        title:
+          '서울 장소 목록',
+
         description:
           '서울 관광 API에서 불러온 관광지, 축제, 문화시설, 숙박, 음식점 정보를 한 번에 확인하세요.',
-        search: '장소명 또는 주소를 검색하세요',
-        district: '자치구',
-        all: '전체',
-        loading: '서울 관광 데이터를 불러오고 있어요',
-        loaded: '불러옴',
-        noResult: '조건에 맞는 장소가 없습니다.',
-        loadFailed: '장소 데이터를 불러오지 못했습니다.',
-        retry: '다시 시도',
-        map: '지도에서 보기',
-        community: '커뮤니티',
-        previous: '이전',
-        next: '다음',
-        count: '개의 장소',
-        page: '페이지',
+
+        search:
+          '장소명 또는 주소를 검색하세요',
+
+        district:
+          '자치구',
+
+        all:
+          '전체',
+
+        reset:
+          '초기화',
+
+        loading:
+          '서울 관광 데이터를 불러오고 있어요',
+
+        loaded:
+          '불러옴',
+
+        noResult:
+          '조건에 맞는 장소가 없습니다.',
+
+        loadFailed:
+          '장소 데이터를 불러오지 못했습니다.',
+
+        retry:
+          '다시 시도',
+
+        map:
+          '지도에서 보기',
+
+        community:
+          '커뮤니티',
+
+        previous:
+          '이전',
+
+        next:
+          '다음',
+
+        count:
+          '개의 장소',
+
+        page:
+          '페이지',
+
         source:
           '데이터: 한국관광공사 TourAPI 4.0',
+
+        openDetail:
+          '장소 상세 보기',
+
         category: {
           all: '전체',
           attraction: '관광지',
@@ -128,7 +219,10 @@ const districts = computed(() => {
   return [
     ...new Set(
       allItems.value
-        .map((item) => item.district)
+        .map(
+          (item) =>
+            item.district
+        )
         .filter(Boolean)
     )
   ].sort((a, b) =>
@@ -138,40 +232,52 @@ const districts = computed(() => {
 
 const filteredItems = computed(() => {
   const normalizedKeyword =
-    keyword.value.trim().toLowerCase()
-
-  return allItems.value.filter((item) => {
-    const categoryMatched =
-      category.value === 'all' ||
-      item.category === category.value
-
-    const districtMatched =
-      district.value === 'all' ||
-      item.district === district.value
-
-    const searchTarget = [
-      item.title,
-      item.titleEn,
-      item.address,
-      item.district,
-      ...(item.tags || [])
-    ]
-      .filter(Boolean)
-      .join(' ')
+    keyword.value
+      .trim()
       .toLowerCase()
 
-    const keywordMatched =
-      !normalizedKeyword ||
-      searchTarget.includes(
-        normalizedKeyword
-      )
+  return allItems.value.filter(
+    (item) => {
+      const categoryMatched =
+        category.value === 'all' ||
+        item.category ===
+          category.value
 
-    return (
-      categoryMatched &&
-      districtMatched &&
-      keywordMatched
-    )
-  })
+      const districtMatched =
+        district.value === 'all' ||
+        item.district ===
+          district.value
+
+      const searchTarget = [
+        item.title,
+        item.titleEn,
+        item.address,
+        item.addressEn,
+        item.koAddress,
+        item.enAddress,
+        item.raw?.ko_address,
+        item.raw?.en_address,
+        item.district,
+        item.districtEn,
+        ...(item.tags || [])
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const keywordMatched =
+        !normalizedKeyword ||
+        searchTarget.includes(
+          normalizedKeyword
+        )
+
+      return (
+        categoryMatched &&
+        districtMatched &&
+        keywordMatched
+      )
+    }
+  )
 })
 
 const totalPages = computed(() => {
@@ -179,39 +285,83 @@ const totalPages = computed(() => {
     1,
     Math.ceil(
       filteredItems.value.length /
-        pageSize
+        DISPLAY_PAGE_SIZE
     )
   )
 })
 
 const visibleItems = computed(() => {
   const start =
-    (page.value - 1) * pageSize
+    (page.value - 1) *
+    DISPLAY_PAGE_SIZE
 
   return filteredItems.value.slice(
     start,
-    start + pageSize
+    start + DISPLAY_PAGE_SIZE
   )
 })
 
 function titleOf(item) {
   if (locale.value === 'en') {
-    return item.titleEn || item.title
+    return (
+      item.titleEn ||
+      item.title ||
+      ''
+    )
   }
 
-  return item.title
-}
-
-function categoryIcon(categoryId) {
   return (
-    categories.find(
-      ([id]) => id === categoryId
-    )?.[1] || '📍'
+    item.title ||
+    item.titleEn ||
+    ''
   )
 }
 
-function changeLanguage(language) {
+function addressOf(item) {
+  if (!item) {
+    return ''
+  }
+
+  if (locale.value === 'en') {
+    return (
+      item.addressEn ||
+      item.enAddress ||
+      item.raw?.en_address ||
+      item.address ||
+      item.koAddress ||
+      item.raw?.ko_address ||
+      ''
+    )
+  }
+
+  return (
+    item.address ||
+    item.koAddress ||
+    item.raw?.ko_address ||
+    item.addressEn ||
+    item.enAddress ||
+    item.raw?.en_address ||
+    ''
+  )
+}
+
+function categoryIcon(
+  categoryId
+) {
+  return (
+    categories.find(
+      ([id]) =>
+        id === categoryId
+    )?.[1] ||
+    '📍'
+  )
+}
+
+function changeLanguage(
+  language
+) {
   locale.value = language
+  settings.setLang(language)
 
   localStorage.setItem(
     'welcome-seoul-language',
@@ -219,9 +369,20 @@ function changeLanguage(language) {
   )
 }
 
+function goPlace(item) {
+  if (!item?.id) {
+    return
+  }
+
+  router.push(
+    `/place/${item.id}`
+  )
+}
+
 function goMap(item) {
   router.push({
     path: '/map',
+
     query: {
       place: item.id,
       category: item.category
@@ -232,6 +393,7 @@ function goMap(item) {
 function goCommunity(item) {
   router.push({
     path: '/community',
+
     query: {
       location: item.id
     }
@@ -265,6 +427,8 @@ async function loadLocations() {
   loading.value = true
   error.value = ''
 
+  allItems.value = []
+
   progress.value = {
     loaded: 0,
     total: 0
@@ -272,16 +436,33 @@ async function loadLocations() {
 
   try {
     const result =
-      await api.fetchAllLocations({
-        pageSize: 500,
-        maxItems: 10000,
+      await locationApi
+        .fetchAllLocations({
+          pageSize:
+            API_PAGE_SIZE,
 
-        onProgress(value) {
-          progress.value = value
-        }
-      })
+          maxItems:
+            10000,
 
-    allItems.value = result.items
+          onProgress(value) {
+            progress.value =
+              value
+          }
+        })
+
+    allItems.value =
+      result.items || []
+
+    console.log(
+      '장소 목록 로딩 완료:',
+      {
+        loaded:
+          allItems.value.length,
+
+        total:
+          result.total
+      }
+    )
   } catch (loadError) {
     console.error(
       '장소 목록 조회 실패:',
@@ -317,7 +498,8 @@ watch(
 )
 
 watch(
-  () => route.query.category,
+  () =>
+    route.query.category,
   (queryCategory) => {
     category.value = String(
       queryCategory || 'all'
@@ -338,12 +520,13 @@ watch(
   }
 )
 
-onMounted(loadLocations)
+onMounted(() => {
+  loadLocations()
+})
 </script>
 
 <template>
   <div class="locations-page">
-    <!-- 헤더 -->
     <header class="page-header">
       <button
         type="button"
@@ -356,7 +539,10 @@ onMounted(loadLocations)
         </span>
 
         <span class="brand-copy">
-          <strong>Welcome Seoul</strong>
+          <strong>
+            Welcome Seoul
+          </strong>
+
           <small>
             {{ labels.brandSubtitle }}
           </small>
@@ -370,9 +556,12 @@ onMounted(loadLocations)
         <button
           type="button"
           :class="{
-            active: locale === 'ko'
+            active:
+              locale === 'ko'
           }"
-          @click="changeLanguage('ko')"
+          @click="
+            changeLanguage('ko')
+          "
         >
           KO
         </button>
@@ -380,16 +569,18 @@ onMounted(loadLocations)
         <button
           type="button"
           :class="{
-            active: locale === 'en'
+            active:
+              locale === 'en'
           }"
-          @click="changeLanguage('en')"
+          @click="
+            changeLanguage('en')
+          "
         >
           EN
         </button>
       </div>
     </header>
 
-    <!-- 상단 히어로 -->
     <section class="page-hero">
       <div class="hero-content">
         <span class="hero-eyebrow">
@@ -407,7 +598,6 @@ onMounted(loadLocations)
     </section>
 
     <main class="page-content">
-      <!-- 검색 및 필터 -->
       <section class="filter-panel">
         <label class="search-box">
           <svg
@@ -425,14 +615,20 @@ onMounted(loadLocations)
               r="7"
             />
 
-            <path d="m20 20-3.7-3.7" />
+            <path
+              d="m20 20-3.7-3.7"
+            />
           </svg>
 
           <input
             v-model="keyword"
             type="search"
-            :placeholder="labels.search"
-            :aria-label="labels.search"
+            :placeholder="
+              labels.search
+            "
+            :aria-label="
+              labels.search
+            "
           />
 
           <button
@@ -440,24 +636,32 @@ onMounted(loadLocations)
             type="button"
             class="clear-search"
             aria-label="검색어 지우기"
-            @click="keyword = ''"
+            @click="
+              keyword = ''
+            "
           >
             ×
           </button>
         </label>
 
-        <label class="district-select">
+        <label
+          class="district-select"
+        >
           <span>
             {{ labels.district }}
           </span>
 
-          <select v-model="district">
+          <select
+            v-model="district"
+          >
             <option value="all">
               {{ labels.all }}
             </option>
 
             <option
-              v-for="value in districts"
+              v-for="
+                value in districts
+              "
               :key="value"
               :value="value"
             >
@@ -484,38 +688,51 @@ onMounted(loadLocations)
               d="M3 12a9 9 0 1 0 3-6.7"
             />
 
-            <path d="M3 4v6h6" />
+            <path
+              d="M3 4v6h6"
+            />
           </svg>
 
-          Reset
+          {{ labels.reset }}
         </button>
 
-        <div class="category-scroll">
+        <div
+          class="category-scroll"
+        >
           <button
-            v-for="[id, icon] in categories"
+            v-for="
+              [id, icon]
+              in categories
+            "
             :key="id"
             type="button"
             class="category-chip"
             :class="{
-              active: category === id
+              active:
+                category === id
             }"
-            @click="category = id"
+            @click="
+              category = id
+            "
           >
             <span>
               {{ icon }}
             </span>
 
-            {{ labels.category[id] }}
+            {{
+              labels.category[id]
+            }}
           </button>
         </div>
       </section>
 
-      <!-- 로딩 -->
       <section
         v-if="loading"
         class="state-panel"
       >
-        <span class="loader"></span>
+        <span
+          class="loader"
+        ></span>
 
         <strong>
           {{ labels.loading }}
@@ -523,24 +740,30 @@ onMounted(loadLocations)
 
         <p>
           {{
-            progress.loaded.toLocaleString()
+            progress.loaded
+              .toLocaleString()
           }}
           /
           {{
             progress.total
-              ? progress.total.toLocaleString()
+              ? progress.total
+                  .toLocaleString()
               : '...'
           }}
           {{ labels.loaded }}
         </p>
       </section>
 
-      <!-- 에러 -->
       <section
         v-else-if="error"
-        class="state-panel error-state"
+        class="
+          state-panel
+          error-state
+        "
       >
-        <span class="state-icon">
+        <span
+          class="state-icon"
+        >
           !
         </span>
 
@@ -555,19 +778,24 @@ onMounted(loadLocations)
         <button
           type="button"
           class="retry-button"
-          @click="loadLocations"
+          @click="
+            loadLocations
+          "
         >
           {{ labels.retry }}
         </button>
       </section>
 
       <template v-else>
-        <!-- 검색 결과 요약 -->
-        <div class="result-summary">
+        <div
+          class="result-summary"
+        >
           <p>
             <strong>
               {{
-                filteredItems.length.toLocaleString()
+                filteredItems
+                  .length
+                  .toLocaleString()
               }}
             </strong>
 
@@ -582,27 +810,50 @@ onMounted(loadLocations)
           </span>
         </div>
 
-        <!-- 장소 카드 -->
         <section
-          v-if="visibleItems.length"
+          v-if="
+            visibleItems.length
+          "
           class="location-grid"
         >
           <article
-            v-for="item in visibleItems"
+            v-for="
+              item in visibleItems
+            "
             :key="item.id"
             class="location-card"
+            role="link"
+            tabindex="0"
+            :aria-label="
+              `${titleOf(item)} ${labels.openDetail}`
+            "
+            @click="
+              goPlace(item)
+            "
+            @keydown.enter="
+              goPlace(item)
+            "
+            @keydown.space.prevent="
+              goPlace(item)
+            "
           >
-            <div class="image-wrap">
+            <div
+              class="image-wrap"
+            >
               <img
                 v-if="item.image"
                 :src="item.image"
-                :alt="titleOf(item)"
+                :alt="
+                  titleOf(item)
+                "
                 loading="lazy"
               />
 
               <div
                 v-else
-                class="image-placeholder"
+                class="
+                  image-placeholder
+                "
               >
                 {{
                   categoryIcon(
@@ -611,32 +862,49 @@ onMounted(loadLocations)
                 }}
               </div>
 
-              <span class="category-badge">
+              <span
+                class="
+                  category-badge
+                "
+              >
                 {{
                   labels.category[
                     item.category
-                  ] || item.category
+                  ] ||
+                  item.category
                 }}
               </span>
             </div>
 
-            <div class="card-content">
+            <div
+              class="card-content"
+            >
               <h2>
                 {{ titleOf(item) }}
               </h2>
 
               <p class="address">
                 <svg
-                  viewBox="0 0 24 24"
+                  viewBox="
+                    0 0 24 24
+                  "
                   width="16"
                   height="16"
                   fill="none"
-                  stroke="currentColor"
+                  stroke="
+                    currentColor
+                  "
                   stroke-width="2"
                   aria-hidden="true"
                 >
                   <path
-                    d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"
+                    d="
+                      M20 10
+                      c0 5-8 11-8 11
+                      S4 15 4 10
+                      a8 8 0 1 1
+                      16 0Z
+                    "
                   />
 
                   <circle
@@ -647,39 +915,63 @@ onMounted(loadLocations)
                 </svg>
 
                 <span>
-                  {{ item.address }}
+                  {{
+                    addressOf(item)
+                  }}
                 </span>
               </p>
 
               <div
-                v-if="item.tags?.length"
+                v-if="
+                  item.tags?.length
+                "
                 class="tags"
               >
                 <span
-                  v-for="tag in item.tags.slice(0, 3)"
+                  v-for="
+                    tag in
+                    item.tags.slice(
+                      0,
+                      3
+                    )
+                  "
                   :key="tag"
                 >
                   #{{ tag }}
                 </span>
               </div>
 
-              <div class="card-actions">
+              <div
+                class="card-actions"
+              >
                 <button
                   type="button"
                   class="map-button"
-                  @click="goMap(item)"
+                  @click.stop="
+                    goMap(item)
+                  "
                 >
                   <svg
-                    viewBox="0 0 24 24"
+                    viewBox="
+                      0 0 24 24
+                    "
                     width="15"
                     height="15"
                     fill="none"
-                    stroke="currentColor"
+                    stroke="
+                      currentColor
+                    "
                     stroke-width="2"
                     aria-hidden="true"
                   >
                     <path
-                      d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"
+                      d="
+                        M20 10
+                        c0 5-8 11-8 11
+                        S4 15 4 10
+                        a8 8 0 1 1
+                        16 0Z
+                      "
                     />
 
                     <circle
@@ -694,36 +986,56 @@ onMounted(loadLocations)
 
                 <button
                   type="button"
-                  class="community-button"
-                  @click="goCommunity(item)"
+                  class="
+                    community-button
+                  "
+                  @click.stop="
+                    goCommunity(item)
+                  "
                 >
                   <svg
-                    viewBox="0 0 24 24"
+                    viewBox="
+                      0 0 24 24
+                    "
                     width="15"
                     height="15"
                     fill="none"
-                    stroke="currentColor"
+                    stroke="
+                      currentColor
+                    "
                     stroke-width="2"
                     aria-hidden="true"
                   >
                     <path
-                      d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"
+                      d="
+                        M21 15
+                        a4 4 0 0 1
+                        -4 4H8
+                        l-5 3V7
+                        a4 4 0 0 1
+                        4-4h10
+                        a4 4 0 0 1
+                        4 4Z
+                      "
                     />
                   </svg>
 
-                  {{ labels.community }}
+                  {{
+                    labels.community
+                  }}
                 </button>
               </div>
             </div>
           </article>
         </section>
 
-        <!-- 검색 결과 없음 -->
         <section
           v-else
           class="state-panel"
         >
-          <span class="state-icon">
+          <span
+            class="state-icon"
+          >
             🔎
           </span>
 
@@ -736,39 +1048,56 @@ onMounted(loadLocations)
             class="retry-button"
             @click="clearFilters"
           >
-            Reset
+            {{ labels.reset }}
           </button>
         </section>
 
-        <!-- 페이지네이션 -->
         <nav
-          v-if="visibleItems.length && totalPages > 1"
+          v-if="
+            visibleItems.length &&
+            totalPages > 1
+          "
           class="pagination"
-          aria-label="장소 목록 페이지"
+          aria-label="
+            장소 목록 페이지
+          "
         >
           <button
             type="button"
-            :disabled="page === 1"
-            @click="goPage(page - 1)"
+            :disabled="
+              page === 1
+            "
+            @click="
+              goPage(page - 1)
+            "
           >
             ← {{ labels.previous }}
           </button>
 
           <span>
-            {{ page }} / {{ totalPages }}
+            {{ page }}
+            /
+            {{ totalPages }}
           </span>
 
           <button
             type="button"
-            :disabled="page === totalPages"
-            @click="goPage(page + 1)"
+            :disabled="
+              page ===
+              totalPages
+            "
+            @click="
+              goPage(page + 1)
+            "
           >
             {{ labels.next }} →
           </button>
         </nav>
       </template>
 
-      <footer class="data-source">
+      <footer
+        class="data-source"
+      >
         {{ labels.source }}
       </footer>
     </main>
@@ -1092,6 +1421,7 @@ onMounted(loadLocations)
 
 .location-card {
   overflow: hidden;
+  cursor: pointer;
   background: #fff;
   border: 1px solid #e4e8f0;
   border-radius: 18px;
@@ -1100,14 +1430,23 @@ onMounted(loadLocations)
     rgba(25, 37, 64, 0.06);
   transition:
     box-shadow 0.2s ease,
-    transform 0.2s ease;
+    transform 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .location-card:hover {
+  border-color: #d7dcfa;
   box-shadow:
     0 12px 28px
     rgba(25, 37, 64, 0.11);
   transform: translateY(-3px);
+}
+
+.location-card:focus-visible {
+  border-color: #5362ee;
+  outline: 3px solid
+    rgba(83, 98, 238, 0.18);
+  outline-offset: 3px;
 }
 
 .image-wrap {
@@ -1127,7 +1466,8 @@ onMounted(loadLocations)
     transform 0.4s ease;
 }
 
-.location-card:hover .image-wrap img {
+.location-card:hover
+.image-wrap img {
   transform: scale(1.045);
 }
 
@@ -1187,6 +1527,7 @@ onMounted(loadLocations)
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   line-clamp: 2;
 }
 
@@ -1208,7 +1549,8 @@ onMounted(loadLocations)
 
 .card-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns:
+    1fr 1fr;
   gap: 7px;
   margin-top: 12px;
 }
@@ -1223,6 +1565,7 @@ onMounted(loadLocations)
   font-size: 9px;
   font-weight: 850;
   border-radius: 10px;
+  cursor: pointer;
 }
 
 .map-button {
@@ -1267,6 +1610,7 @@ onMounted(loadLocations)
 .state-panel p {
   margin: 7px 0 0;
   font-size: 11px;
+  white-space: pre-line;
 }
 
 .error-state {
@@ -1300,6 +1644,7 @@ onMounted(loadLocations)
   background: #5362ee;
   border: 0;
   border-radius: 10px;
+  cursor: pointer;
 }
 
 .loader {
@@ -1336,6 +1681,7 @@ onMounted(loadLocations)
   background: #fff;
   border: 1px solid #dfe3fa;
   border-radius: 11px;
+  cursor: pointer;
 }
 
 .pagination button:disabled {
@@ -1369,14 +1715,20 @@ onMounted(loadLocations)
 
   .location-grid {
     grid-template-columns:
-      repeat(3, minmax(0, 1fr));
+      repeat(
+        3,
+        minmax(0, 1fr)
+      );
   }
 }
 
 @media (min-width: 980px) {
   .location-grid {
     grid-template-columns:
-      repeat(4, minmax(0, 1fr));
+      repeat(
+        4,
+        minmax(0, 1fr)
+      );
   }
 }
 
@@ -1408,7 +1760,8 @@ onMounted(loadLocations)
   }
 
   .location-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns:
+      1fr;
   }
 }
 </style>
