@@ -72,7 +72,7 @@
         <button
           type="button"
           class="post-content-button"
-          @click="$emit('edit', post)"
+          @click="$emit('view', post)"
         >
           <h3>{{ post.title }}</h3>
 

@@ -133,6 +133,50 @@
           </div>
         </div>
 
+        <label class="form-group">
+          <span class="form-label">{{ copy.tagsLabel }}</span>
+
+          <div class="tags-list">
+            <button
+              v-for="tag in tags"
+              :key="tag.id"
+              type="button"
+              class="tag-chip"
+              :class="{ selected: selectedTagIds.includes(tag.id) }"
+              @click="toggleTag(tag.id)"
+            >
+              {{ getTagLabel(tag) }}
+            </button>
+          </div>
+        </label>
+
+        <label class="form-group">
+          <span class="form-label">{{ copy.selected }} / {{ copy.locationPlaceholder }}</span>
+
+          <div>
+            <input
+              v-model="locationQuery"
+              @input="searchLocations"
+              class="form-control"
+              :placeholder="copy.locationPlaceholder"
+              :disabled="locationLoading || saving"
+            />
+
+            <ul v-if="locationResults.length" class="location-results">
+              <li v-for="loc in locationResults" :key="loc.id">
+                  <button type="button" class="location-item" @click="selectLocation(loc)">
+                    {{ getLocationLabel(loc) }} <small v-if="loc.address">— {{ loc.address }}</small>
+                  </button>
+                </li>
+            </ul>
+
+            <div v-if="selectedLocation" class="selected-location">
+              {{ copy.selected }}: {{ getLocationLabel(selectedLocation) }}
+              <button type="button" @click="clearLocation">{{ copy.clear }}</button>
+            </div>
+          </div>
+        </label>
+
         <div class="editor-actions">
           <button
             type="button"
@@ -173,8 +217,10 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import useApi from '../composables/useApi'
+import useLocations from '../composables/useLocations'
 import { useSettings } from '../stores/settings'
 
 const props = defineProps({
@@ -189,6 +235,7 @@ const emit = defineEmits(['close', 'saved'])
 const api = useApi()
 const settings = useSettings()
 const { locale } = useI18n()
+const locationApi = useLocations()
 
 const editorTitleId = 'community-post-editor-title'
 
@@ -197,6 +244,13 @@ const content = ref('')
 const password = ref('')
 const saving = ref(false)
 const showPassword = ref(false)
+const tags = ref([])
+const selectedTagIds = ref([])
+
+const locationQuery = ref('')
+const locationResults = ref([])
+const selectedLocation = ref(null)
+const locationLoading = ref(false)
 
 const copy = computed(() => {
   if (locale.value === 'en') {
@@ -230,7 +284,11 @@ const copy = computed(() => {
       fillFields: 'Please enter a title and content.',
       passwordRequired: 'Please enter the edit password.',
       passwordLength: 'The password must be between 4 and 20 characters.',
-      saveFailed: 'Could not save the post.'
+      saveFailed: 'Could not save the post.',
+      tagsLabel: 'Tags',
+      locationPlaceholder: 'Search a place (optional)',
+      clear: 'Clear',
+      selected: 'Selected'
     }
   }
 
@@ -264,7 +322,11 @@ const copy = computed(() => {
     fillFields: '제목과 내용을 모두 입력해 주세요.',
     passwordRequired: '수정용 비밀번호를 입력해 주세요.',
     passwordLength: '비밀번호는 4자 이상 20자 이하로 입력해 주세요.',
-    saveFailed: '게시글 저장에 실패했습니다.'
+    saveFailed: '게시글 저장에 실패했습니다.',
+    tagsLabel: '태그',
+    locationPlaceholder: '장소 검색 (선택사항)',
+    clear: '삭제',
+    selected: '선택됨'
   }
 })
 
@@ -275,11 +337,116 @@ watch(
     content.value = post?.content || ''
     password.value = ''
     showPassword.value = false
+    // prefill tags
+      // support different API shapes: `tags` or `tag_ids`
+      const tagSource = post?.tags ?? post?.tag_ids ?? []
+      if (tagSource && Array.isArray(tagSource)) {
+        selectedTagIds.value = tagSource.map((t) => {
+          const id = typeof t === 'object' ? (t.id ?? t.value ?? null) : t
+          return Number(id)
+        }).filter((n) => Number.isFinite(n))
+      } else {
+        selectedTagIds.value = []
+      }
+
+    // prefill location: support `location_id` or `place_ids`
+    const placeId = post?.location_id ?? (Array.isArray(post?.place_ids) ? post.place_ids[0] : null)
+    if (placeId) {
+      ;(async () => {
+        try {
+          const loc = await locationApi.fetchLocation(placeId)
+          selectedLocation.value = loc
+        } catch (err) {
+          selectedLocation.value = null
+        }
+      })()
+    } else {
+      selectedLocation.value = null
+    }
   },
   {
     immediate: true
   }
 )
+
+
+async function fetchTags() {
+  try {
+    const tagData = await api.fetchTags()
+    // API returns { items: [...] }
+    const items = Array.isArray(tagData) ? tagData : tagData?.items || []
+    tags.value = items.map((t) => ({
+      id: Number(t.id),
+      name: t.name,
+      name_en: t.name_en,
+      color: t.color
+    }))
+  } catch (err) {
+    tags.value = []
+  }
+}
+
+onMounted(() => {
+  fetchTags()
+})
+
+function toggleTag(id) {
+  const nid = Number(id)
+  const idx = selectedTagIds.value.indexOf(nid)
+  if (idx === -1) selectedTagIds.value.push(nid)
+  else selectedTagIds.value.splice(idx, 1)
+}
+
+function getTagLabel(tag) {
+  try {
+    return String(locale.value).toLowerCase().startsWith('en') ? tag.name_en : tag.name
+  } catch (e) {
+    return tag.name
+  }
+}
+
+function getLocationLabel(loc) {
+  if (!loc) return ''
+  try {
+    return String(locale.value).toLowerCase().startsWith('en')
+      ? (loc.titleEn || loc.title || loc.name_en || loc.name)
+      : (loc.title || loc.titleEn || loc.name || loc.name_en)
+  } catch (e) {
+    return loc.title || loc.name || ''
+  }
+}
+
+let searchTimer = null
+async function searchLocations() {
+  const q = locationQuery.value.trim()
+  if (searchTimer) clearTimeout(searchTimer)
+  if (!q) {
+    locationResults.value = []
+    return
+  }
+
+  searchTimer = setTimeout(async () => {
+    locationLoading.value = true
+    try {
+      const result = await locationApi.fetchLocations({ q, size: 6 })
+      locationResults.value = result.items || []
+    } catch (err) {
+      locationResults.value = []
+    } finally {
+      locationLoading.value = false
+    }
+  }, 250)
+}
+
+function selectLocation(loc) {
+  selectedLocation.value = loc
+  locationResults.value = []
+  locationQuery.value = ''
+}
+
+function clearLocation() {
+  selectedLocation.value = null
+}
 
 async function save() {
   const normalizedTitle = title.value.trim()
@@ -309,6 +476,10 @@ async function save() {
       password: password.value,
       language: settings.lang || locale.value
     }
+
+    // attach tags and location
+    payload.tags = selectedTagIds.value.map(Number)
+    payload.location_id = selectedLocation.value ? Number(selectedLocation.value.id) : null
 
     let result
 
@@ -511,6 +682,52 @@ async function save() {
   color: #919bad;
   font-size: 10px;
   line-height: 1.5;
+}
+
+.tags-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-chip {
+  padding: 6px 10px;
+  background: #f5f7fa;
+  border: 1px solid #e7eaf0;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.tag-chip.selected {
+  background: linear-gradient(135deg, #5362ee, #735be8);
+  color: #fff;
+  border: 0;
+}
+
+.location-results {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid #e6e8fb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.location-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  background: #fff;
+  border: 0;
+}
+
+.selected-location {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .language-notice {
