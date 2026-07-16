@@ -682,7 +682,9 @@ onMounted(() => {
                     />
                   </svg>
 
-                  {{ displayDistrict(place) }}
+                  <span class="ranking-address-text">
+                    {{ displayDistrict(place) }}
+                  </span>
                 </span>
               </div>
             </button>
@@ -1305,11 +1307,27 @@ onMounted(() => {
 
 .ranking-address {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
   margin-top: 4px;
+  overflow: hidden;
   color: #8490a3;
   font-size: 11px;
+}
+
+.ranking-address svg {
+  flex: 0 0 auto;
+}
+
+.ranking-address-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ranking-view {
