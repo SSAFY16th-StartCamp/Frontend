@@ -150,32 +150,156 @@
           </div>
         </label>
 
-        <label class="form-group">
-          <span class="form-label">{{ copy.selected }} / {{ copy.locationPlaceholder }}</span>
+        <div class="form-group location-group">
+          <span class="form-label">
+            {{ copy.locationLabel }}
+          </span>
 
-          <div>
+          <div class="location-search-wrap">
+            <svg
+              class="location-search-icon"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.7-3.7" />
+            </svg>
+
             <input
               v-model="locationQuery"
-              @input="searchLocations"
-              class="form-control"
+              class="location-search-input"
+              type="search"
               :placeholder="copy.locationPlaceholder"
               :disabled="locationLoading || saving"
+              @input="searchLocations"
             />
 
-            <ul v-if="locationResults.length" class="location-results">
-              <li v-for="loc in locationResults" :key="loc.id">
-                  <button type="button" class="location-item" @click="selectLocation(loc)">
-                    {{ getLocationLabel(loc) }} <small v-if="loc.address">— {{ loc.address }}</small>
-                  </button>
-                </li>
-            </ul>
-
-            <div v-if="selectedLocation" class="selected-location">
-              {{ copy.selected }}: {{ getLocationLabel(selectedLocation) }}
-              <button type="button" @click="clearLocation">{{ copy.clear }}</button>
-            </div>
+            <span
+              v-if="locationLoading"
+              class="location-search-spinner"
+              aria-hidden="true"
+            />
           </div>
-        </label>
+
+          <ul
+            v-if="locationResults.length"
+            class="location-results"
+          >
+            <li
+              v-for="loc in locationResults"
+              :key="loc.id"
+            >
+              <button
+                type="button"
+                class="location-item"
+                @click="selectLocation(loc)"
+              >
+                <span class="location-result-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="16"
+                    height="16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"
+                    />
+
+                    <circle
+                      cx="12"
+                      cy="10"
+                      r="2.5"
+                    />
+                  </svg>
+                </span>
+
+                <span class="location-result-copy">
+                  <strong>
+                    {{ getLocationLabel(loc) }}
+                  </strong>
+
+                  <small v-if="getLocationAddress(loc)">
+                    {{ getLocationAddress(loc) }}
+                  </small>
+                </span>
+
+                <span
+                  class="location-result-arrow"
+                  aria-hidden="true"
+                >
+                  ›
+                </span>
+              </button>
+            </li>
+          </ul>
+
+          <div
+            v-if="selectedLocation"
+            class="selected-location"
+          >
+            <span class="selected-location-icon">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path
+                  d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"
+                />
+
+                <circle
+                  cx="12"
+                  cy="10"
+                  r="2.5"
+                />
+              </svg>
+            </span>
+
+            <span class="selected-location-copy">
+              <small>{{ copy.selectedLocation }}</small>
+
+              <strong>
+                {{ getLocationLabel(selectedLocation) }}
+              </strong>
+
+              <span v-if="getLocationAddress(selectedLocation)">
+                {{ getLocationAddress(selectedLocation) }}
+              </span>
+            </span>
+
+            <button
+              type="button"
+              class="selected-location-clear"
+              :aria-label="copy.clearLocation"
+              :title="copy.clearLocation"
+              @click="clearLocation"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="17"
+                height="17"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path d="m6 6 12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </div>
+        </div>
 
         <div class="editor-actions">
           <button
@@ -286,9 +410,10 @@ const copy = computed(() => {
       passwordLength: 'The password must be between 4 and 20 characters.',
       saveFailed: 'Could not save the post.',
       tagsLabel: 'Tags',
+      locationLabel: 'Related place',
       locationPlaceholder: 'Search a place (optional)',
-      clear: 'Clear',
-      selected: 'Selected'
+      selectedLocation: 'Selected place',
+      clearLocation: 'Remove selected place'
     }
   }
 
@@ -324,9 +449,10 @@ const copy = computed(() => {
     passwordLength: '비밀번호는 4자 이상 20자 이하로 입력해 주세요.',
     saveFailed: '게시글 저장에 실패했습니다.',
     tagsLabel: '태그',
+    locationLabel: '관련 장소',
     locationPlaceholder: '장소 검색 (선택사항)',
-    clear: '삭제',
-    selected: '선택됨'
+    selectedLocation: '선택한 장소',
+    clearLocation: '선택한 장소 삭제'
   }
 })
 
@@ -414,6 +540,39 @@ function getLocationLabel(loc) {
   } catch (e) {
     return loc.title || loc.name || ''
   }
+}
+
+function getLocationAddress(loc) {
+  if (!loc) {
+    return ''
+  }
+
+  const isEnglish =
+    String(locale.value)
+      .toLowerCase()
+      .startsWith('en')
+
+  if (isEnglish) {
+    return (
+      loc.addressEn ||
+      loc.enAddress ||
+      loc.raw?.en_address ||
+      loc.address ||
+      loc.koAddress ||
+      loc.raw?.ko_address ||
+      ''
+    )
+  }
+
+  return (
+    loc.address ||
+    loc.koAddress ||
+    loc.raw?.ko_address ||
+    loc.addressEn ||
+    loc.enAddress ||
+    loc.raw?.en_address ||
+    ''
+  )
 }
 
 let searchTimer = null
@@ -705,29 +864,249 @@ async function save() {
   border: 0;
 }
 
-.location-results {
-  margin: 8px 0 0;
+.location-group {
+  min-width: 0;
+}
+
+.location-search-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  min-height: 49px;
+  padding: 0 13px;
+  color: #8490a4;
+  background: #fff;
+  border: 1px solid #dfe4ed;
+  border-radius: 13px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.location-search-wrap:focus-within {
+  border-color: rgba(83, 98, 238, 0.7);
+  box-shadow:
+    0 0 0 4px rgba(83, 98, 238, 0.1);
+}
+
+.location-search-icon {
+  flex-shrink: 0;
+  margin-right: 9px;
+  color: #7885a0;
+}
+
+.location-search-input {
+  min-width: 0;
+  height: 47px;
+  flex: 1;
   padding: 0;
+  color: #1c263b;
+  font-family: inherit;
+  font-size: 13px;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.location-search-input::placeholder {
+  color: #a1abbb;
+}
+
+.location-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.location-search-spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  border: 2px solid #dfe3fa;
+  border-top-color: #5362ee;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* 검색 결과 목록 */
+.location-results {
+  max-height: 230px;
+  overflow-y: auto;
+  margin: 2px 0 0;
+  padding: 6px;
   list-style: none;
-  border: 1px solid #e6e8fb;
-  border-radius: 8px;
-  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dfe4ed;
+  border-radius: 13px;
+  box-shadow:
+    0 12px 28px rgba(24, 35, 59, 0.12);
+}
+
+.location-results li + li {
+  margin-top: 3px;
 }
 
 .location-item {
-  display: block;
+  display: flex;
   width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  color: inherit;
+  font-family: inherit;
   text-align: left;
-  padding: 8px 10px;
-  background: #fff;
+  background: transparent;
   border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
 }
 
-.selected-location {
-  margin-top: 8px;
+.location-item:hover,
+.location-item:focus-visible {
+  color: #5362ee;
+  background: #f4f5ff;
+  outline: none;
+}
+
+.location-result-icon {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  flex-shrink: 0;
+  color: #5967e8;
+  background: #eef0ff;
+  border-radius: 10px;
+}
+
+.location-result-copy {
   display: flex;
-  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.location-result-copy strong {
+  overflow: hidden;
+  color: #29344a;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-result-copy small {
+  overflow: hidden;
+  color: #8a95a7;
+  font-size: 9px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-result-arrow {
+  flex-shrink: 0;
+  color: #a2abba;
+  font-size: 20px;
+}
+
+/* 선택된 장소 카드 */
+.selected-location {
+  display: flex;
+  min-width: 0;
   align-items: center;
+  gap: 11px;
+  margin-top: 9px;
+  padding: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      #f7f8ff 0%,
+      #eef1ff 100%
+    );
+  border: 1px solid #dce1fb;
+  border-radius: 14px;
+  box-shadow:
+    0 6px 16px rgba(83, 98, 238, 0.07);
+}
+
+.selected-location-icon {
+  display: grid;
+  place-items: center;
+  width: 41px;
+  height: 41px;
+  flex-shrink: 0;
+  color: #fff;
+  background:
+    linear-gradient(
+      135deg,
+      #5362ee,
+      #735be8
+    );
+  border-radius: 12px;
+  box-shadow:
+    0 7px 16px rgba(83, 98, 238, 0.23);
+}
+
+.selected-location-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.selected-location-copy small {
+  color: #7e89a2;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.selected-location-copy strong {
+  overflow: hidden;
+  color: #263148;
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-location-copy > span {
+  overflow: hidden;
+  color: #8b96a8;
+  font-size: 9px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-location-clear {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0;
+  color: #7b8699;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #dce1eb;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.selected-location-clear:hover {
+  color: #e25562;
+  background: #fff;
+  border-color: #f0cdd1;
 }
 
 .language-notice {
