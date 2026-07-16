@@ -1,7 +1,7 @@
 <script setup>
 import {
   computed,
-  onMounted,
+  onBeforeUnmount,
   ref,
   watch
 } from 'vue'
@@ -25,13 +25,10 @@ const settings = useSettings()
 const locationApi = useLocations()
 
 const allItems = ref([])
+const totalItems = ref(0)
+
 const loading = ref(true)
 const error = ref('')
-
-const progress = ref({
-  loaded: 0,
-  total: 0
-})
 
 const keyword = ref(
   String(route.query.q || '')
@@ -44,11 +41,33 @@ const category = ref(
   )
 )
 
-const district = ref('all')
-const page = ref(1)
+const district = ref(
+  String(
+    route.query.district ||
+    'all'
+  )
+)
 
-const DISPLAY_PAGE_SIZE = 24
-const API_PAGE_SIZE = 100
+const page = ref(
+  Math.max(
+    Number(route.query.page) || 1,
+    1
+  )
+)
+
+const pageSize = ref(
+  Math.min(
+    Math.max(
+      Number(route.query.size) || 24,
+      1
+    ),
+    100
+  )
+)
+
+let searchTimer = null
+let latestRequestId = 0
+
 
 const categories = [
   ['all', '✨'],
@@ -209,90 +228,91 @@ const labels = computed(() => {
       }
 })
 
+const SEOUL_DISTRICTS = [
+  '강남구',
+  '강동구',
+  '강북구',
+  '강서구',
+  '관악구',
+  '광진구',
+  '구로구',
+  '금천구',
+  '노원구',
+  '도봉구',
+  '동대문구',
+  '동작구',
+  '마포구',
+  '서대문구',
+  '서초구',
+  '성동구',
+  '성북구',
+  '송파구',
+  '양천구',
+  '영등포구',
+  '용산구',
+  '은평구',
+  '종로구',
+  '중구',
+  '중랑구'
+]
+
+const districtEnglishNames = {
+  강남구: 'Gangnam-gu',
+  강동구: 'Gangdong-gu',
+  강북구: 'Gangbuk-gu',
+  강서구: 'Gangseo-gu',
+  관악구: 'Gwanak-gu',
+  광진구: 'Gwangjin-gu',
+  구로구: 'Guro-gu',
+  금천구: 'Geumcheon-gu',
+  노원구: 'Nowon-gu',
+  도봉구: 'Dobong-gu',
+  동대문구: 'Dongdaemun-gu',
+  동작구: 'Dongjak-gu',
+  마포구: 'Mapo-gu',
+  서대문구: 'Seodaemun-gu',
+  서초구: 'Seocho-gu',
+  성동구: 'Seongdong-gu',
+  성북구: 'Seongbuk-gu',
+  송파구: 'Songpa-gu',
+  양천구: 'Yangcheon-gu',
+  영등포구: 'Yeongdeungpo-gu',
+  용산구: 'Yongsan-gu',
+  은평구: 'Eunpyeong-gu',
+  종로구: 'Jongno-gu',
+  중구: 'Jung-gu',
+  중랑구: 'Jungnang-gu'
+}
+
 const districts = computed(() => {
-  return [
-    ...new Set(
-      allItems.value
-        .map(
-          (item) =>
-            item.district
-        )
-        .filter(Boolean)
-    )
-  ].sort((a, b) =>
-    a.localeCompare(b, 'ko')
+  return SEOUL_DISTRICTS.map(
+    (value) => ({
+      value,
+
+      label:
+        locale.value === 'en'
+          ? districtEnglishNames[value]
+          : value
+    })
   )
 })
 
 const filteredItems = computed(() => {
-  const normalizedKeyword =
-    keyword.value
-      .trim()
-      .toLowerCase()
-
-  return allItems.value.filter(
-    (item) => {
-      const categoryMatched =
-        category.value === 'all' ||
-        item.category ===
-          category.value
-
-      const districtMatched =
-        district.value === 'all' ||
-        item.district ===
-          district.value
-
-      const searchTarget = [
-        item.title,
-        item.titleEn,
-        item.address,
-        item.addressEn,
-        item.koAddress,
-        item.enAddress,
-        item.raw?.ko_address,
-        item.raw?.en_address,
-        item.district,
-        item.districtEn,
-        ...(item.tags || [])
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-
-      const keywordMatched =
-        !normalizedKeyword ||
-        searchTarget.includes(
-          normalizedKeyword
-        )
-
-      return (
-        categoryMatched &&
-        districtMatched &&
-        keywordMatched
-      )
-    }
-  )
+  return allItems.value
 })
 
 const totalPages = computed(() => {
   return Math.max(
     1,
     Math.ceil(
-      filteredItems.value.length /
-        DISPLAY_PAGE_SIZE
+      totalItems.value /
+      pageSize.value
     )
   )
 })
 
 const visibleItems = computed(() => {
-  const start =
-    (page.value - 1) *
-    DISPLAY_PAGE_SIZE
-
-  return filteredItems.value.slice(
-    start,
-    start + DISPLAY_PAGE_SIZE
-  )
+  return allItems.value
 })
 
 function titleOf(item) {
@@ -394,11 +414,75 @@ function goCommunity(item) {
   })
 }
 
+function createLocationQuery(
+  targetPage = page.value
+) {
+  const query = {
+    page: String(targetPage),
+    size: String(pageSize.value)
+  }
+
+  const normalizedKeyword =
+    keyword.value.trim()
+
+  if (normalizedKeyword) {
+    query.q = normalizedKeyword
+  }
+
+  if (category.value !== 'all') {
+    query.category = category.value
+  }
+
+  if (district.value !== 'all') {
+    query.district = district.value
+  }
+
+  return query
+}
+
+function applyFilters() {
+  router.replace({
+    path: '/location',
+    query: createLocationQuery(1)
+  })
+}
+
+function scheduleFilterUpdate() {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+
+  searchTimer = setTimeout(() => {
+    applyFilters()
+  }, 350)
+}
+
+function clearKeyword() {
+  keyword.value = ''
+  applyFilters()
+}
+
+function selectCategory(
+  categoryId
+) {
+  category.value = categoryId
+  applyFilters()
+}
+
 function goPage(nextPage) {
-  page.value = Math.min(
-    Math.max(nextPage, 1),
-    totalPages.value
-  )
+  const normalizedPage =
+    Math.min(
+      Math.max(nextPage, 1),
+      totalPages.value
+    )
+
+  router.push({
+    path: '/location',
+    query:
+      createLocationQuery(
+        normalizedPage
+      )
+  })
 
   window.scrollTo({
     top: 0,
@@ -413,93 +497,138 @@ function clearFilters() {
   page.value = 1
 
   router.replace({
-    path: '/location'
+    path: '/location',
+    query: {
+      page: '1',
+      size: String(pageSize.value)
+    }
   })
 }
 
 async function loadLocations() {
+  const requestId =
+    ++latestRequestId
+
   loading.value = true
   error.value = ''
 
-  allItems.value = []
-
-  progress.value = {
-    loaded: 0,
-    total: 0
-  }
-
   try {
+    const normalizedKeyword =
+      keyword.value.trim()
+
     const result =
-      await locationApi
-        .fetchAllLocations({
-          pageSize:
-            API_PAGE_SIZE,
+      await locationApi.fetchLocations({
+        page: page.value,
+        size: pageSize.value,
 
-          maxItems:
-            10000,
+        q:
+          normalizedKeyword ||
+          undefined,
 
-          onProgress(value) {
-            progress.value =
-              value
-          }
-        })
+        category:
+          category.value === 'all'
+            ? undefined
+            : category.value,
+
+        district:
+          district.value === 'all'
+            ? undefined
+            : district.value
+      })
+
+    /*
+     * 빠르게 검색 조건을 바꿨을 때
+     * 이전 요청 결과가 최신 결과를
+     * 덮어쓰지 않도록 한다.
+     */
+    if (
+      requestId !==
+      latestRequestId
+    ) {
+      return
+    }
 
     allItems.value =
       result.items || []
 
+    totalItems.value =
+      Number(
+        result.total ??
+        result.totalItems ??
+        result.total_count ??
+        result.count ??
+        result.pagination?.total ??
+        allItems.value.length
+      )
+
+    const lastPage =
+      Math.max(
+        1,
+        Math.ceil(
+          totalItems.value /
+          pageSize.value
+        )
+      )
+
+    /*
+     * 필터 결과가 줄어서 현재 페이지가
+     * 마지막 페이지보다 커진 경우 보정한다.
+     */
+    if (
+      totalItems.value > 0 &&
+      page.value > lastPage
+    ) {
+      router.replace({
+        path: '/location',
+
+        query:
+          createLocationQuery(
+            lastPage
+          )
+      })
+
+      return
+    }
+
     console.log(
-      '장소 목록 로딩 완료:',
+      '장소 페이지 조회 완료:',
       {
+        page: page.value,
+        size: pageSize.value,
         loaded:
           allItems.value.length,
-
         total:
-          result.total
+          totalItems.value
       }
     )
   } catch (loadError) {
+    if (
+      requestId !==
+      latestRequestId
+    ) {
+      return
+    }
+
     console.error(
       '장소 목록 조회 실패:',
       loadError
     )
 
+    allItems.value = []
+    totalItems.value = 0
+
     error.value =
       loadError.message ||
       labels.value.loadFailed
   } finally {
-    loading.value = false
+    if (
+      requestId ===
+      latestRequestId
+    ) {
+      loading.value = false
+    }
   }
 }
-
-watch(
-  [
-    keyword,
-    category,
-    district
-  ],
-  () => {
-    page.value = 1
-  }
-)
-
-watch(
-  () => route.query.q,
-  (query) => {
-    keyword.value = String(
-      query || ''
-    )
-  }
-)
-
-watch(
-  () =>
-    route.query.category,
-  (queryCategory) => {
-    category.value = String(
-      queryCategory || 'all'
-    )
-  }
-)
 
 watch(
   () => locale.value,
@@ -514,8 +643,54 @@ watch(
   }
 )
 
-onMounted(() => {
-  loadLocations()
+watch(
+  () => route.fullPath,
+  () => {
+    keyword.value =
+      String(route.query.q || '')
+
+    category.value =
+      String(
+        route.query.category ||
+        'all'
+      )
+
+    district.value =
+      String(
+        route.query.district ||
+        'all'
+      )
+
+    page.value =
+      Math.max(
+        Number(
+          route.query.page
+        ) || 1,
+        1
+      )
+
+    pageSize.value =
+      Math.min(
+        Math.max(
+          Number(
+            route.query.size
+          ) || 24,
+          1
+        ),
+        100
+      )
+
+    loadLocations()
+  },
+  {
+    immediate: true
+  }
+)
+
+onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
 })
 </script>
 
@@ -623,6 +798,8 @@ onMounted(() => {
             :aria-label="
               labels.search
             "
+            @input="scheduleFilterUpdate"
+            @keydown.enter.prevent="applyFilters"
           />
 
           <button
@@ -630,9 +807,7 @@ onMounted(() => {
             type="button"
             class="clear-search"
             aria-label="검색어 지우기"
-            @click="
-              keyword = ''
-            "
+            @click="clearKeyword"
           >
             ×
           </button>
@@ -647,19 +822,18 @@ onMounted(() => {
 
           <select
             v-model="district"
+            @change="applyFilters"
           >
             <option value="all">
               {{ labels.all }}
             </option>
 
             <option
-              v-for="
-                value in districts
-              "
-              :key="value"
-              :value="value"
+              v-for="item in districts"
+              :key="item.value"
+              :value="item.value"
             >
-              {{ value }}
+              {{ item.label }}
             </option>
           </select>
         </label>
@@ -705,9 +879,7 @@ onMounted(() => {
               active:
                 category === id
             }"
-            @click="
-              category = id
-            "
+            @click="selectCategory(id)"
           >
             <span>
               {{ icon }}
@@ -733,18 +905,8 @@ onMounted(() => {
         </strong>
 
         <p>
-          {{
-            progress.loaded
-              .toLocaleString()
-          }}
-          /
-          {{
-            progress.total
-              ? progress.total
-                  .toLocaleString()
-              : '...'
-          }}
-          {{ labels.loaded }}
+          {{ labels.page }}
+          {{ page }}
         </p>
       </section>
 
@@ -787,8 +949,7 @@ onMounted(() => {
           <p>
             <strong>
               {{
-                filteredItems
-                  .length
+                totalItems
                   .toLocaleString()
               }}
             </strong>
