@@ -38,13 +38,18 @@ const loading = ref(true)
 const error = ref('')
 
 const activeImageIndex = ref(0)
-const copySuccess = ref(false)
+
+const shareMenuOpen = ref(false)
+const linkCopySuccess = ref(false)
 
 const mapElement = ref(null)
 
 let mapInstance = null
 let markerInstance = null
-let copyTimer = null
+let shareTimer = null
+
+const KAKAO_JAVASCRIPT_KEY =
+  import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY || ''
 
 const text = computed(() => {
   const english = locale.value === 'en'
@@ -72,11 +77,32 @@ const text = computed(() => {
         address:
           'Address',
 
-        copyAddress:
-          'Copy address',
+        share:
+          'Share',
 
-        copied:
-          'Copied',
+        sharePlace:
+          'Share this place',
+
+        shareKakao:
+          'Share to KakaoTalk',
+
+        shareOther:
+          'Share with another app',
+
+        copyLink:
+          'Copy page link',
+
+        linkCopied:
+          'Link copied',
+
+        viewPlace:
+          'View place',
+
+        shareFailed:
+          'Could not share this page.',
+
+        kakaoKeyMissing:
+          'The Kakao JavaScript key is missing.',
 
         telephone:
           'Phone',
@@ -159,11 +185,32 @@ const text = computed(() => {
         address:
           '주소',
 
-        copyAddress:
-          '주소 복사',
+        share:
+          '공유하기',
 
-        copied:
-          '복사 완료',
+        sharePlace:
+          '이 장소 공유하기',
+
+        shareKakao:
+          '카카오톡으로 공유',
+
+        shareOther:
+          '다른 앱으로 공유',
+
+        copyLink:
+          '페이지 링크 복사',
+
+        linkCopied:
+          '링크 복사 완료',
+
+        viewPlace:
+          '장소 자세히 보기',
+
+        shareFailed:
+          '페이지를 공유하지 못했습니다.',
+
+        kakaoKeyMissing:
+          '카카오 JavaScript 키가 등록되지 않았습니다.',
 
         telephone:
           '전화번호',
@@ -516,6 +563,50 @@ const tags = computed(() => {
     .filter(Boolean)
 })
 
+const shareUrl = computed(() => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const url = new URL(
+    window.location.href
+  )
+
+  /*
+   * 해시 값은 공유 주소에서 제거한다.
+   */
+  url.hash = ''
+
+  return url.toString()
+})
+
+const shareDescription = computed(() => {
+  const description =
+    stripHtml(displayDescription.value)
+
+  return (
+    description ||
+    displayAddress.value ||
+    text.value.dataSource
+  ).slice(0, 140)
+})
+
+const shareImageUrl = computed(() => {
+  const image =
+    activeImage.value ||
+    placeImages.value[0] ||
+    '/og-default.png'
+
+  return toAbsoluteUrl(image)
+})
+
+const canUseNativeShare = computed(() => {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function'
+  )
+})
+
 function toValidNumber(value) {
   const number = Number(value)
 
@@ -545,6 +636,35 @@ function sanitizeWebsite(value) {
   }
 
   return `https://${plainText}`
+}
+
+function stripHtml(value) {
+  if (!value) {
+    return ''
+  }
+
+  return String(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function toAbsoluteUrl(value) {
+  if (
+    !value ||
+    typeof window === 'undefined'
+  ) {
+    return ''
+  }
+
+  try {
+    return new URL(
+      value,
+      window.location.origin
+    ).href
+  } catch {
+    return ''
+  }
 }
 
 function normalizePlace(data, requestedId) {
@@ -769,31 +889,383 @@ function displayPostTitle(post) {
   )
 }
 
-async function copyAddress() {
-  if (!displayAddress.value) {
+function toggleShareMenu() {
+  shareMenuOpen.value =
+    !shareMenuOpen.value
+
+  linkCopySuccess.value = false
+}
+
+function closeShareMenu() {
+  shareMenuOpen.value = false
+}
+
+function getKakaoSdk() {
+  if (
+    typeof window === 'undefined' ||
+    !window.Kakao
+  ) {
+    throw new Error(
+      locale.value === 'en'
+        ? 'The Kakao SDK has not been loaded.'
+        : '카카오 SDK를 불러오지 못했습니다.'
+    )
+  }
+
+  if (!KAKAO_JAVASCRIPT_KEY) {
+    throw new Error(
+      text.value.kakaoKeyMissing
+    )
+  }
+
+  const kakao = window.Kakao
+
+  if (!kakao.isInitialized()) {
+    kakao.init(
+      KAKAO_JAVASCRIPT_KEY
+    )
+  }
+
+  return kakao
+}
+
+function shareToKakao() {
+  if (!place.value) {
     return
   }
 
   try {
-    await navigator.clipboard.writeText(
-      displayAddress.value
-    )
+    const kakao = getKakaoSdk()
 
-    copySuccess.value = true
-
-    if (copyTimer) {
-      clearTimeout(copyTimer)
+    const link = {
+      mobileWebUrl: shareUrl.value,
+      webUrl: shareUrl.value
     }
 
-    copyTimer = setTimeout(() => {
-      copySuccess.value = false
-    }, 1800)
-  } catch (copyError) {
+    const content = {
+      title:
+        displayTitle.value ||
+        'Welcome Seoul',
+
+      description:
+        shareDescription.value,
+
+      link
+    }
+
+    /*
+     * 공유할 이미지가 있을 때만
+     * imageUrl을 전달한다.
+     */
+    if (shareImageUrl.value) {
+      content.imageUrl =
+        shareImageUrl.value
+    }
+
+    kakao.Share.sendDefault({
+      objectType: 'feed',
+
+      content,
+
+      buttons: [
+        {
+          title: text.value.viewPlace,
+          link
+        }
+      ]
+    })
+
+    closeShareMenu()
+  } catch (shareError) {
     console.error(
-      '주소 복사 실패:',
-      copyError
+      '카카오톡 공유 실패:',
+      shareError
+    )
+
+    window.alert(
+      shareError.message ||
+      text.value.shareFailed
     )
   }
+}
+
+async function shareWithNativeApp() {
+  if (!canUseNativeShare.value) {
+    await copyPageLink()
+    return
+  }
+
+  try {
+    await navigator.share({
+      title: displayTitle.value,
+      text: shareDescription.value,
+      url: shareUrl.value
+    })
+
+    closeShareMenu()
+  } catch (shareError) {
+    /*
+     * 사용자가 공유창을 닫은 것은
+     * 오류 메시지를 띄우지 않는다.
+     */
+    if (
+      shareError?.name ===
+      'AbortError'
+    ) {
+      return
+    }
+
+    console.error(
+      '시스템 공유 실패:',
+      shareError
+    )
+
+    await copyPageLink()
+  }
+}
+
+async function copyPageLink() {
+  if (!shareUrl.value) {
+    return
+  }
+
+  try {
+    if (
+      navigator.clipboard &&
+      navigator.clipboard.writeText
+    ) {
+      await navigator.clipboard.writeText(
+        shareUrl.value
+      )
+    } else {
+      fallbackCopyText(
+        shareUrl.value
+      )
+    }
+
+    linkCopySuccess.value = true
+
+    if (shareTimer) {
+      clearTimeout(shareTimer)
+    }
+
+    shareTimer = setTimeout(() => {
+      linkCopySuccess.value = false
+      closeShareMenu()
+    }, 1500)
+  } catch (copyError) {
+    console.error(
+      '페이지 링크 복사 실패:',
+      copyError
+    )
+
+    try {
+      fallbackCopyText(
+        shareUrl.value
+      )
+
+      linkCopySuccess.value = true
+    } catch {
+      window.alert(
+        text.value.shareFailed
+      )
+    }
+  }
+}
+
+function fallbackCopyText(value) {
+  const textarea =
+    document.createElement('textarea')
+
+  textarea.value = value
+  textarea.setAttribute(
+    'readonly',
+    ''
+  )
+
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+
+  document.body.appendChild(
+    textarea
+  )
+
+  textarea.select()
+
+  const copied =
+    document.execCommand('copy')
+
+  document.body.removeChild(
+    textarea
+  )
+
+  if (!copied) {
+    throw new Error(
+      'Copy failed'
+    )
+  }
+}
+
+function setMetaTag(
+  attribute,
+  name,
+  content
+) {
+  if (
+    typeof document === 'undefined' ||
+    !content
+  ) {
+    return
+  }
+
+  let element =
+    document.head.querySelector(
+      `meta[${attribute}="${name}"]`
+    )
+
+  if (!element) {
+    element =
+      document.createElement('meta')
+
+    element.setAttribute(
+      attribute,
+      name
+    )
+
+    document.head.appendChild(
+      element
+    )
+  }
+
+  element.setAttribute(
+    'content',
+    content
+  )
+}
+
+function updateShareMetadata() {
+  if (
+    typeof document === 'undefined' ||
+    !place.value
+  ) {
+    return
+  }
+
+  const title =
+    `${displayTitle.value} | Welcome Seoul`
+
+  const description =
+    shareDescription.value
+
+  const image =
+    shareImageUrl.value
+
+  const url =
+    shareUrl.value
+
+  document.title = title
+
+  setMetaTag(
+    'property',
+    'og:type',
+    'website'
+  )
+
+  setMetaTag(
+    'property',
+    'og:site_name',
+    'Welcome Seoul'
+  )
+
+  setMetaTag(
+    'property',
+    'og:title',
+    title
+  )
+
+  setMetaTag(
+    'property',
+    'og:description',
+    description
+  )
+
+  setMetaTag(
+    'property',
+    'og:url',
+    url
+  )
+
+  setMetaTag(
+    'property',
+    'og:image',
+    image
+  )
+
+  setMetaTag(
+    'name',
+    'description',
+    description
+  )
+
+  setMetaTag(
+    'name',
+    'twitter:card',
+    'summary_large_image'
+  )
+
+  setMetaTag(
+    'name',
+    'twitter:title',
+    title
+  )
+
+  setMetaTag(
+    'name',
+    'twitter:description',
+    description
+  )
+
+  setMetaTag(
+    'name',
+    'twitter:image',
+    image
+  )
+}
+
+function resetShareMetadata() {
+  if (
+    typeof document === 'undefined'
+  ) {
+    return
+  }
+
+  document.title = 'Welcome Seoul'
+
+  setMetaTag(
+    'property',
+    'og:title',
+    'Welcome Seoul'
+  )
+
+  setMetaTag(
+    'property',
+    'og:description',
+    'Discover Seoul attractions and local travel information.'
+  )
+
+  setMetaTag(
+    'property',
+    'og:image',
+    toAbsoluteUrl(
+      '/og-default.png'
+    )
+  )
+
+  setMetaTag(
+    'property',
+    'og:url',
+    window.location.origin
+  )
 }
 
 async function loadRelatedPosts(locationId) {
@@ -1011,16 +1483,40 @@ watch(
   }
 )
 
+watch(
+  [
+    place,
+    locale,
+    activeImage
+  ],
+  async () => {
+    await nextTick()
+    updateShareMetadata()
+  }
+)
+
 onMounted(() => {
+  document.addEventListener(
+    'click',
+    closeShareMenu
+  )
+
   loadPlace()
 })
 
 onBeforeUnmount(() => {
   destroyMap()
 
-  if (copyTimer) {
-    clearTimeout(copyTimer)
+  document.removeEventListener(
+    'click',
+    closeShareMenu
+  )
+
+  if (shareTimer) {
+    clearTimeout(shareTimer)
   }
+
+  resetShareMetadata()
 })
 </script>
 
@@ -1225,48 +1721,138 @@ onBeforeUnmount(() => {
                 {{ displayAddress || '-' }}
               </span>
 
-              <button
-                v-if="displayAddress"
-                type="button"
-                class="copy-button"
-                :title="text.copyAddress"
-                @click="copyAddress"
+              <div
+                class="share-control"
+                @click.stop
               >
-                <svg
-                  v-if="!copySuccess"
-                  viewBox="0 0 24 24"
-                  width="17"
-                  height="17"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  aria-hidden="true"
+                <button
+                  type="button"
+                  class="share-button"
+                  :class="{
+                    active: shareMenuOpen
+                  }"
+                  :title="text.share"
+                  :aria-label="text.share"
+                  :aria-expanded="shareMenuOpen"
+                  @click="toggleShareMenu"
                 >
-                  <rect
-                    x="9"
-                    y="9"
-                    width="11"
-                    height="11"
-                    rx="2"
-                  />
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
 
-                  <path
-                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                  />
-                </svg>
+                    <path d="m8.6 10.7 6.8-4.2" />
+                    <path d="m8.6 13.3 6.8 4.2" />
+                  </svg>
+                </button>
 
-                <span v-else>
-                  ✓
-                </span>
-              </button>
+                <div
+                  v-if="shareMenuOpen"
+                  class="share-menu"
+                >
+                  <strong class="share-menu-title">
+                    {{ text.sharePlace }}
+                  </strong>
+
+                  <button
+                    type="button"
+                    class="share-option kakao-option"
+                    @click="shareToKakao"
+                  >
+                    <span class="share-option-icon kakao-icon">
+                      K
+                    </span>
+
+                    <span>{{ text.shareKakao }}</span>
+                  </button>
+
+                  <button
+                    v-if="canUseNativeShare"
+                    type="button"
+                    class="share-option"
+                    @click="shareWithNativeApp"
+                  >
+                    <span class="share-option-icon">
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="17"
+                        height="17"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M12 3v12"
+                        />
+                        <path
+                          d="m7 8 5-5 5 5"
+                        />
+                        <path
+                          d="M5 13v6h14v-6"
+                        />
+                      </svg>
+                    </span>
+
+                    <span>{{ text.shareOther }}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="share-option"
+                    :class="{
+                      success: linkCopySuccess
+                    }"
+                    @click="copyPageLink"
+                  >
+                    <span class="share-option-icon">
+                      <svg
+                        v-if="!linkCopySuccess"
+                        viewBox="0 0 24 24"
+                        width="17"
+                        height="17"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        aria-hidden="true"
+                      >
+                        <rect
+                          x="9"
+                          y="9"
+                          width="11"
+                          height="11"
+                          rx="2"
+                        />
+
+                        <path
+                          d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                        />
+                      </svg>
+
+                      <span v-else>
+                        ✓
+                      </span>
+                    </span>
+
+                    <span>
+                      {{
+                        linkCopySuccess
+                          ? text.linkCopied
+                          : text.copyLink
+                      }}
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
-
-            <span
-              v-if="copySuccess"
-              class="copy-message"
-            >
-              {{ text.copied }}
-            </span>
 
             <div class="information-grid">
               <div class="information-item">
@@ -1884,27 +2470,148 @@ onBeforeUnmount(() => {
   line-height: 1.55;
 }
 
-.copy-button {
-  display: grid;
-  width: 31px;
-  height: 31px;
+.share-control {
+  position: relative;
   flex-shrink: 0;
+}
+
+.share-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
   place-items: center;
   padding: 0;
   color: #5362ee;
   background: #fff;
   border: 1px solid #dfe3fa;
-  border-radius: 9px;
+  border-radius: 10px;
   cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 
-.copy-message {
+.share-button:hover,
+.share-button.active {
+  color: #fff;
+  background:
+    linear-gradient(
+      135deg,
+      #5362ee,
+      #735be8
+    );
+  border-color: transparent;
+  transform: translateY(-1px);
+}
+
+.share-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 100;
+  width: 225px;
+  padding: 9px;
+  background: #fff;
+  border: 1px solid #e1e5ed;
+  border-radius: 14px;
+  box-shadow:
+    0 16px 38px
+    rgba(25, 37, 64, 0.18);
+  animation:
+    share-menu-open 0.17s ease;
+}
+
+@keyframes share-menu-open {
+  from {
+    opacity: 0;
+    transform:
+      translateY(-4px)
+      scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+.share-menu-title {
   display: block;
-  margin-top: 6px;
-  color: #3d9b67;
-  font-size: 9px;
+  padding: 5px 7px 9px;
+  color: #344057;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.share-option {
+  display: flex;
+  width: 100%;
+  min-height: 43px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  color: #4e5a70;
+  font-family: inherit;
+  font-size: 11px;
   font-weight: 800;
-  text-align: right;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+
+.share-option:hover {
+  color: #5362ee;
+  background: #f3f5ff;
+}
+
+.share-option.success {
+  color: #299367;
+  background: #eefaf5;
+}
+
+.share-option-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex-shrink: 0;
+  place-items: center;
+  color: #5362ee;
+  background: #eef0ff;
+  border-radius: 9px;
+}
+
+.kakao-option {
+  color: #332f20;
+}
+
+.kakao-option:hover {
+  color: #332f20;
+  background: #fff9dc;
+}
+
+.kakao-icon {
+  color: #302c1f;
+  font-size: 13px;
+  font-weight: 900;
+  background: #fee500;
+}
+
+@media (max-width: 540px) {
+  .share-menu {
+    width: min(
+      225px,
+      calc(100vw - 72px)
+    );
+  }
 }
 
 .information-grid {
