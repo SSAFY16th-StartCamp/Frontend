@@ -52,7 +52,6 @@ const selectedCategory = ref(
   )
 )
 
-const selectedDistrict = ref('all')
 const selectedPlace = ref(null)
 
 const loading = ref(true)
@@ -109,11 +108,9 @@ const CATEGORY_COLORS = {
   attraction: '#5362ee',
   culture: '#9c5de8',
   festival: '#f04464',
-  course: '#f59e0b',
   leisure: '#10a878',
   accommodation: '#168fe3',
   shopping: '#ec4899',
-  restaurant: '#f97316'
 }
 
 function categoryColor(category) {
@@ -142,16 +139,13 @@ const text = computed(() => {
           'Find attractions, festivals, cultural facilities and local travel information across Seoul.',
 
         searchPlaceholder:
-          'Search places or districts',
+          'Search places',
 
         search:
           'Search',
 
         all:
           'All',
-
-        district:
-          'District',
 
         result:
           'places found',
@@ -182,11 +176,9 @@ const text = computed(() => {
           attraction: 'Attractions',
           culture: 'Culture',
           festival: 'Festivals',
-          course: 'Courses',
           leisure: 'Leisure',
           accommodation: 'Stay',
           shopping: 'Shopping',
-          restaurant: 'Restaurants'
         },
 
         myLocation: 'My location',
@@ -265,16 +257,13 @@ const text = computed(() => {
           '서울의 관광지, 축제, 문화시설과 외국인 여행자를 위한 지역 정보를 한눈에 확인하세요.',
 
         searchPlaceholder:
-          '장소명이나 자치구를 검색하세요',
+          '장소명을 검색하세요',
 
         search:
           '검색',
 
         all:
           '전체',
-
-        district:
-          '자치구',
 
         result:
           '개의 장소',
@@ -305,11 +294,9 @@ const text = computed(() => {
           attraction: '관광지',
           culture: '문화시설',
           festival: '축제',
-          course: '여행코스',
           leisure: '레포츠',
           accommodation: '숙박',
           shopping: '쇼핑',
-          restaurant: '음식점'
         },
 
         myLocation: '내 위치',
@@ -394,10 +381,6 @@ const categoryOptions = [
     icon: '🎉'
   },
   {
-    id: 'course',
-    icon: '🚶'
-  },
-  {
     id: 'leisure',
     icon: '🚲'
   },
@@ -409,25 +392,7 @@ const categoryOptions = [
     id: 'shopping',
     icon: '🛍️'
   },
-  {
-    id: 'restaurant',
-    icon: '🍽️'
-  }
 ]
-
-const districts = computed(() => {
-  return [
-    ...new Set(
-      places.value
-        .map((place) =>
-          place.district
-        )
-        .filter(Boolean)
-    )
-  ].sort((a, b) =>
-    a.localeCompare(b, 'ko')
-  )
-})
 
 const filteredPlaces = computed(() => {
   const normalizedKeyword =
@@ -438,16 +403,9 @@ const filteredPlaces = computed(() => {
   return places.value.filter(
     (place) => {
       const matchesCategory =
-        selectedCategory.value ===
-          'all' ||
+        selectedCategory.value === 'all' ||
         place.category ===
           selectedCategory.value
-
-      const matchesDistrict =
-        selectedDistrict.value ===
-          'all' ||
-        place.district ===
-          selectedDistrict.value
 
       const searchableText = [
         place.title,
@@ -479,7 +437,6 @@ const filteredPlaces = computed(() => {
 
       return (
         matchesCategory &&
-        matchesDistrict &&
         matchesKeyword &&
         Number.isFinite(place.lat) &&
         Number.isFinite(place.lng)
@@ -996,7 +953,6 @@ function selectCategory(category) {
 function resetMap() {
   keyword.value = ''
   selectedCategory.value = 'all'
-  selectedDistrict.value = 'all'
   selectedPlace.value = null
 
   nextTick(() => {
@@ -2092,8 +2048,7 @@ async function loadPlaces() {
 watch(
   [
     keyword,
-    selectedCategory,
-    selectedDistrict
+    selectedCategory
   ],
   () => {
     selectedPlace.value = null
@@ -2238,84 +2193,6 @@ onBeforeUnmount(() => {
           </button>
         </form>
 
-        <div class="select-row">
-          <label class="select-control">
-            <span>{{ text.district }}</span>
-
-            <select v-model="selectedDistrict">
-              <option value="all">
-                {{ text.all }}
-              </option>
-
-              <option
-                v-for="district in districts"
-                :key="district"
-                :value="district"
-              >
-                {{ district }}
-              </option>
-            </select>
-          </label>
-          
-          <button
-            type="button"
-            class="current-location-button"
-            @click="focusOnCurrentLocation"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="17"
-              height="17"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="3"
-              />
-
-              <circle
-                cx="12"
-                cy="12"
-                r="8"
-              />
-
-              <path d="M12 2v2" />
-              <path d="M12 20v2" />
-              <path d="M2 12h2" />
-              <path d="M20 12h2" />
-            </svg>
-
-            <span>
-              {{ text.locateMe }}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            class="reset-button"
-            @click="resetMap"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="17"
-              height="17"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                d="M3 12a9 9 0 1 0 3-6.7"
-              />
-              <path d="M3 4v6h6" />
-            </svg>
-
-            {{ text.resetMap }}
-          </button>
-        </div>
-
         <div
           v-if="userLocation"
           class="current-location-route"
@@ -2373,21 +2250,91 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="category-scroll">
-          <button
-            v-for="category in categoryOptions"
-            :key="category.id"
-            type="button"
-            class="category-chip"
-            :class="{
-              active:
-                selectedCategory === category.id
-            }"
-            @click="selectCategory(category.id)"
-          >
-            <span>{{ category.icon }}</span>
-            {{ text.categories[category.id] }}
-          </button>
+        <div class="category-toolbar">
+          <!-- 카테고리 목록 -->
+          <div class="category-scroll">
+            <button
+              v-for="category in categoryOptions"
+              :key="category.id"
+              type="button"
+              class="category-chip"
+              :class="{
+                active:
+                  selectedCategory === category.id
+              }"
+              @click="selectCategory(category.id)"
+            >
+              <span>{{ category.icon }}</span>
+
+              {{ text.categories[category.id] }}
+            </button>
+          </div>
+
+          <!-- 카테고리 오른쪽 버튼 -->
+          <div class="category-actions">
+            <button
+              type="button"
+              class="current-location-button"
+              :aria-label="text.locateMe"
+              :title="text.locateMe"
+              @click="focusOnCurrentLocation"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="17"
+                height="17"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="3"
+                />
+
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8"
+                />
+
+                <path d="M12 2v2" />
+                <path d="M12 20v2" />
+                <path d="M2 12h2" />
+                <path d="M20 12h2" />
+              </svg>
+
+              <span>{{ text.locateMe }}</span>
+            </button>
+
+            <button
+              type="button"
+              class="reset-button"
+              :aria-label="text.resetMap"
+              :title="text.resetMap"
+              @click="resetMap"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="17"
+                height="17"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path
+                  d="M3 12a9 9 0 1 0 3-6.7"
+                />
+
+                <path d="M3 4v6h6" />
+              </svg>
+
+              <span>{{ text.resetMap }}</span>
+            </button>
+          </div>
         </div>
 
         <div class="marker-legend">
@@ -3290,42 +3237,40 @@ onBeforeUnmount(() => {
   border-radius: 12px;
 }
 
-.select-row {
+.category-toolbar {
   display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 9px;
-  margin-top: 9px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.select-control {
+.category-scroll {
   display: flex;
   min-width: 0;
   flex: 1;
-  align-items: center;
-  gap: 8px;
-  min-height: 43px;
-  padding: 0 11px;
-  background: #fff;
-  border: 1px solid #e1e5ed;
-  border-radius: 13px;
+  gap: 7px;
+  overflow-x: auto;
+  margin-top: 0;
+  padding: 2px 1px 3px;
+  scrollbar-width: none;
 }
 
-.select-control span {
+.category-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.category-actions {
+  display: flex;
   flex-shrink: 0;
-  color: #778398;
-  font-size: 10px;
-  font-weight: 800;
+  align-items: center;
+  gap: 7px;
 }
 
-.select-control select {
-  min-width: 0;
-  height: 41px;
-  flex: 1;
-  color: #354057;
-  font-size: 11px;
-  background: transparent;
-  border: 0;
-  outline: none;
+.category-actions .current-location-button,
+.category-actions .reset-button {
+  height: 37px;
+  white-space: nowrap;
 }
 
 .reset-button {
@@ -4460,6 +4405,26 @@ onBeforeUnmount(() => {
   .transit-summary {
     grid-template-columns:
       repeat(2, minmax(0, 1fr));
+  }
+
+  .category-toolbar {
+    gap: 7px;
+  }
+
+  .category-actions {
+    gap: 5px;
+  }
+
+  .category-actions .current-location-button,
+  .category-actions .reset-button {
+    width: 37px;
+    height: 37px;
+    padding: 0;
+    border-radius: 12px;
+  }
+
+  .category-actions button > span {
+    display: none;
   }
 }
 </style>

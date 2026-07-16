@@ -472,11 +472,14 @@ watch(
 <style scoped>
 .floating-chatbot {
   position: fixed;
-  right: 18px;
-  bottom: 68px;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  left: auto;
   z-index: 1400;
-  /* 화면 밖으로 나가지 않도록 제한 */
-  max-width: calc(100vw - 36px);
+
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  box-sizing: border-box;
 }
 
 /* 플로팅 버튼 */
@@ -968,9 +971,7 @@ watch(
 
 @media (max-width: 700px) {
   .floating-chatbot {
-    right: 12px;
-    bottom: 60px;
-    max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 32px);
   }
 
   .chatbot-toggle {
@@ -995,14 +996,8 @@ watch(
 /* 모바일 */
 @media (max-width: 520px) {
   .floating-chatbot {
-    right: max(
-      12px,
-      env(safe-area-inset-right)
-    );
-    bottom: max(
-      60px,
-      env(safe-area-inset-bottom)
-    );
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
     max-width: 58px;
   }
 
